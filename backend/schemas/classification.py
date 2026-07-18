@@ -5,6 +5,7 @@ class Sentiment(str, Enum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
+    MIXED = "mixed"
 
 class ClassificationResult(BaseModel):
     review_id: str = Field(..., description="Reference to the original review")
