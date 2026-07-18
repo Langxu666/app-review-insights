@@ -83,6 +83,22 @@ def _fix_json_trailing_commas(json_str: str) -> str:
     json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
     return json_str
 
+def _fix_truncated_json(json_str: str) -> str:
+    open_braces = json_str.count('{')
+    close_braces = json_str.count('}')
+    open_brackets = json_str.count('[')
+    close_brackets = json_str.count(']')
+    
+    for _ in range(open_braces - close_braces):
+        json_str += '}'
+    for _ in range(open_brackets - close_brackets):
+        json_str += ']'
+    
+    if json_str.count('"') % 2 != 0:
+        json_str += '"'
+    
+    return json_str
+
 def parse_json_response(response: str) -> dict:
     if not response or not response.strip():
         return {"error": "invalid_json"}
@@ -99,12 +115,19 @@ def parse_json_response(response: str) -> dict:
     except json.JSONDecodeError:
         pass
     
+    truncated_fixed = _fix_truncated_json(fixed_response)
+    try:
+        return json.loads(truncated_fixed)
+    except json.JSONDecodeError:
+        pass
+    
     try:
         pattern = r'```json\s*([\s\S]*?)\s*```'
         match = re.search(pattern, fixed_response)
         if match:
             fixed_match = _fix_json_trailing_commas(match.group(1))
-            return json.loads(fixed_match)
+            truncated_fixed_match = _fix_truncated_json(fixed_match)
+            return json.loads(truncated_fixed_match)
     except json.JSONDecodeError:
         pass
     
@@ -113,7 +136,8 @@ def parse_json_response(response: str) -> dict:
         match = re.search(pattern, fixed_response)
         if match:
             fixed_match = _fix_json_trailing_commas(match.group(1))
-            return json.loads(fixed_match)
+            truncated_fixed_match = _fix_truncated_json(fixed_match)
+            return json.loads(truncated_fixed_match)
     except json.JSONDecodeError:
         pass
     
@@ -123,7 +147,8 @@ def parse_json_response(response: str) -> dict:
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
             json_str = fixed_response[start_idx:end_idx + 1]
             fixed_json_str = _fix_json_trailing_commas(json_str)
-            return json.loads(fixed_json_str)
+            truncated_fixed_json_str = _fix_truncated_json(fixed_json_str)
+            return json.loads(truncated_fixed_json_str)
     except json.JSONDecodeError:
         pass
     

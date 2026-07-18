@@ -4,10 +4,10 @@ from typing import List, Optional
 from datetime import datetime
 
 class Priority(str, Enum):
-    MUST_HAVE = "must_have"
-    SHOULD_HAVE = "should_have"
-    COULD_HAVE = "could_have"
-    WONT_HAVE = "wont_have"
+    P0 = "P0"
+    P1 = "P1"
+    P2 = "P2"
+    P3 = "P3"
 
 class Requirement(BaseModel):
     req_id: str = Field(..., description="Requirement unique identifier")
