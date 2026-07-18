@@ -10,7 +10,7 @@ from schemas.review import Review
 
 logger = logging.getLogger(__name__)
 
-APPLE_RSS_URL = "https://itunes.apple.com/us/rss/customerreviews/page={page}/id={app_id}/sortby=mostrecent/json"
+APPLE_RSS_URL = "https://itunes.apple.com/{country}/rss/customerreviews/id={app_id}/sortBy=mostRecent/page={page}/json"
 
 MOCK_REVIEWS = [
     {
@@ -65,25 +65,34 @@ MOCK_REVIEWS = [
     },
 ]
 
-def extract_app_id(url: str) -> str:
+def extract_app_id(url: str) -> tuple[str, str]:
+    """Extract app ID and country code from an App Store URL.
+
+    Returns:
+        (app_id, country_code) — e.g. ("839285684", "cn")
+    """
     url = url.strip()
-    
+
     if url.isdigit():
-        return url
-    
-    pattern = r'id(\d+)'
-    match = re.search(pattern, url)
+        return url, "us"
+
+    # Extract country code: apps.apple.com/{country}/...
+    country_match = re.search(r"apps\.apple\.com/([a-z]{2})/", url)
+    country = country_match.group(1) if country_match else "us"
+
+    # Extract app ID: .../idXXXXXXXXX
+    match = re.search(r"id(\d+)", url)
     if match:
-        return match.group(1)
-    
+        return match.group(1), country
+
     raise ValueError(f"无法从 URL 中提取 app_id: {url}")
 
-def fetch_reviews(app_id: str, page: int = 1, limit: int = 50) -> List[dict]:
-    url = APPLE_RSS_URL.format(page=page, app_id=app_id)
-    logger.info(f"Fetching reviews for app_id={app_id}, page={page}")
+def fetch_reviews(app_id: str, country: str = "us", page: int = 1, limit: int = 50) -> List[dict]:
+    url = APPLE_RSS_URL.format(country=country, app_id=app_id, page=page)
+    logger.info(f"Fetching reviews for app_id={app_id}, country={country}, page={page}")
     
     try:
-        with httpx.Client() as client:
+        with httpx.Client(follow_redirects=True) as client:
             response = client.get(url, timeout=15)
             response.raise_for_status()
     except httpx.HTTPStatusError as e:
@@ -149,7 +158,7 @@ def fetch_reviews(app_id: str, page: int = 1, limit: int = 50) -> List[dict]:
 
 def collect_reviews(url: str, max_pages: int = 3, use_mock_data: bool = False) -> List[Review]:
     try:
-        app_id = extract_app_id(url)
+        app_id, country = extract_app_id(url)
     except ValueError as e:
         logger.error(f"Invalid URL: {e}")
         raise
@@ -162,7 +171,7 @@ def collect_reviews(url: str, max_pages: int = 3, use_mock_data: bool = False) -
     
     for page in range(1, max_pages + 1):
         try:
-            raw_reviews = fetch_reviews(app_id, page=page)
+            raw_reviews = fetch_reviews(app_id, country=country, page=page)
             
             if not raw_reviews:
                 if page == 1:
