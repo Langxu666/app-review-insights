@@ -79,6 +79,10 @@ def call_llm(system_prompt: str, user_message: str, temperature: float = 0.1, ma
             else:
                 raise
 
+def _fix_json_trailing_commas(json_str: str) -> str:
+    json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+    return json_str
+
 def parse_json_response(response: str) -> dict:
     if not response or not response.strip():
         return {"error": "invalid_json"}
@@ -88,28 +92,38 @@ def parse_json_response(response: str) -> dict:
     except json.JSONDecodeError:
         pass
     
+    fixed_response = _fix_json_trailing_commas(response)
+    
+    try:
+        return json.loads(fixed_response)
+    except json.JSONDecodeError:
+        pass
+    
     try:
         pattern = r'```json\s*([\s\S]*?)\s*```'
-        match = re.search(pattern, response)
+        match = re.search(pattern, fixed_response)
         if match:
-            return json.loads(match.group(1))
+            fixed_match = _fix_json_trailing_commas(match.group(1))
+            return json.loads(fixed_match)
     except json.JSONDecodeError:
         pass
     
     try:
         pattern = r'```\s*([\s\S]*?)\s*```'
-        match = re.search(pattern, response)
+        match = re.search(pattern, fixed_response)
         if match:
-            return json.loads(match.group(1))
+            fixed_match = _fix_json_trailing_commas(match.group(1))
+            return json.loads(fixed_match)
     except json.JSONDecodeError:
         pass
     
     try:
-        start_idx = response.find("{")
-        end_idx = response.rfind("}")
+        start_idx = fixed_response.find("{")
+        end_idx = fixed_response.rfind("}")
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-            json_str = response[start_idx:end_idx + 1]
-            return json.loads(json_str)
+            json_str = fixed_response[start_idx:end_idx + 1]
+            fixed_json_str = _fix_json_trailing_commas(json_str)
+            return json.loads(fixed_json_str)
     except json.JSONDecodeError:
         pass
     
