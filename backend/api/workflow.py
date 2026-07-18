@@ -54,6 +54,7 @@ class WorkflowResponse(BaseModel):
     status: WorkflowStatus = Field(..., description="Overall workflow status")
     stages: Dict[str, StageInfo] = Field(..., description="Per-stage status information")
     artifacts: ArtifactsSummary = Field(..., description="Artifacts summary counts")
+    artifacts_data: Optional[Dict[str, Any]] = Field(None, description="Full artifacts data (reviews, findings, PRD, etc.)")
     error: Optional[str] = Field(None, description="Overall error message if workflow failed")
     started_at: Optional[datetime] = Field(None, description="Workflow start time")
     completed_at: Optional[datetime] = Field(None, description="Workflow completion time")
@@ -252,6 +253,60 @@ class WorkflowEngine:
         except Exception as e:
             logger.warning(f"Failed to extract counts for stage '{stage_name}': {e}")
 
+    def _build_artifacts_data(self) -> Optional[Dict[str, Any]]:
+        """Build the artifacts data dict in the shape the frontend expects.
+
+        Maps internal artifact keys to frontend-friendly keys:
+          reviews → raw_reviews
+          cleaned → cleaned_data
+          classified → classification_results
+          findings → findings
+          prd → prd_draft
+          tests → test_case_drafts
+        """
+        try:
+            data: Dict[str, Any] = {}
+
+            raw = self.artifacts.get("reviews")
+            if raw is not None:
+                data["raw_reviews"] = raw
+
+            cleaned = self.artifacts.get("cleaned")
+            if cleaned is not None:
+                if isinstance(cleaned, dict) and "cleaned_data" in cleaned:
+                    data["cleaned_data"] = cleaned["cleaned_data"]
+                else:
+                    data["cleaned_data"] = cleaned
+
+            classified = self.artifacts.get("classified")
+            if classified is not None:
+                if isinstance(classified, dict) and "classification_results" in classified:
+                    data["classification_results"] = classified["classification_results"]
+                elif isinstance(classified, list):
+                    data["classification_results"] = classified
+                else:
+                    data["classification_results"] = classified
+
+            findings = self.artifacts.get("findings")
+            if findings is not None:
+                if isinstance(findings, dict) and "findings" in findings:
+                    data["findings"] = findings["findings"]
+                else:
+                    data["findings"] = findings
+
+            prd = self.artifacts.get("prd")
+            if prd is not None:
+                data["prd_draft"] = prd
+
+            tests = self.artifacts.get("tests")
+            if tests is not None:
+                data["test_case_drafts"] = tests
+
+            return data if data else None
+        except Exception as e:
+            logger.warning(f"Failed to build artifacts_data: {e}")
+            return None
+
     def _finish(self, status: WorkflowStatus, error: Optional[str] = None) -> WorkflowResponse:
         """Finalize the workflow and build the response."""
         self.status = status
@@ -268,6 +323,9 @@ class WorkflowEngine:
             + (f", error={error}" if error else "")
         )
 
+        # Build artifacts_data in the shape the frontend expects
+        artifacts_data = self._build_artifacts_data()
+
         return WorkflowResponse(
             status=status,
             stages=self.stages,
@@ -279,6 +337,7 @@ class WorkflowEngine:
                 requirements_count=self.artifacts.get("requirements_count", 0),
                 test_cases_count=self.artifacts.get("test_cases_count", 0),
             ),
+            artifacts_data=artifacts_data,
             error=error,
             started_at=self.started_at,
             completed_at=self.completed_at,
