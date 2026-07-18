@@ -10,7 +10,7 @@ The PRD must include:
 - Background: context about the app and analysis
 - Problem Statement: core user problems discovered
 - Supporting Findings: list of finding IDs
-- User Stories: As a [user], I want [goal], so that [benefit]
+- User Stories: As a [user], I want [goal], so that [benefit]. Each story MUST include both English (role_en, goal_en, benefit_en) and Chinese (role, goal, benefit) fields for bilingual display.
 - Functional Requirements: each with id, description, source_finding_ids, source_review_ids, priority (P0/P1/P2/P3), target_version, effort_estimate (S/M/L/XL), is_assumption, acceptance_criteria
 - Version Plan: version, theme, release_goal, requirement_ids, rationale
 
@@ -38,7 +38,12 @@ Version Planning Rules:
         "user_stories": [
             {
                 "id": "US001",
-                "story": "As a [user type], I want [goal], so that [benefit]"
+                "role": "新用户",
+                "goal": "体验真正的免费试用",
+                "benefit": "无风险评估应用",
+                "role_en": "new user",
+                "goal_en": "experience a genuine free trial",
+                "benefit_en": "evaluate the app risk-free"
             }
         ],
         "requirements": [

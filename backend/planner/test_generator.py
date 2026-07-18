@@ -37,10 +37,20 @@ def _load_system_prompt() -> str:
 
 
 def _extract_requirements(prd_draft: dict) -> List[dict]:
+    # Case 1: Direct 'requirements' key
     if "requirements" in prd_draft:
         raw = prd_draft["requirements"]
-    elif "prd_draft" in prd_draft and isinstance(prd_draft["prd_draft"], dict):
-        raw = prd_draft["prd_draft"].get("requirements", [])
+    # Case 2: Nested under 'prd_draft' (Pydantic model or dict)
+    elif "prd_draft" in prd_draft:
+        inner = prd_draft["prd_draft"]
+        if hasattr(inner, "model_dump"):
+            # Pydantic model
+            raw = inner.model_dump().get("requirements", [])
+        elif isinstance(inner, dict):
+            raw = inner.get("requirements", [])
+        else:
+            logger.warning(f"Unexpected prd_draft type: {type(inner)}")
+            return []
     else:
         logger.warning("No requirements found in PRD draft")
         return []
@@ -148,7 +158,7 @@ def generate_test_cases(prd_draft: dict) -> List[dict]:
     logger.info(f"Generating test cases for {len(requirements)} requirements")
 
     user_message = _build_user_message(requirements, prd_draft)
-    response = call_llm(system_prompt, user_message, temperature=0.1)
+    response = call_llm(system_prompt, user_message, temperature=0.1, max_tokens=8192)
 
     raw_test_cases = _parse_test_cases(response)
 

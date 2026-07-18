@@ -64,6 +64,13 @@ def _parse_findings(response: str) -> List[dict]:
     
     if "error" in parsed:
         logger.error(f"Failed to parse findings: {parsed['error']}")
+        # Save raw response for debugging
+        debug_path = Path(__file__).parent.parent / "data" / "debug_raw_findings_response.txt"
+        try:
+            debug_path.write_text(response, encoding="utf-8")
+            logger.info(f"Raw findings response saved to {debug_path}")
+        except Exception as write_err:
+            logger.warning(f"Failed to save debug file: {write_err}")
         return []
     
     if isinstance(parsed, list):
@@ -125,7 +132,7 @@ def extract_findings(classification_results: List[Any], analysis_goal: Optional[
     logger.info(f"Extracting findings from {len(results)} classification results")
     
     user_message = _build_user_message(results, analysis_goal)
-    response = call_llm(system_prompt, user_message, temperature=0.1)
+    response = call_llm(system_prompt, user_message, temperature=0.1, max_tokens=16384)
     
     raw_findings = _parse_findings(response)
     

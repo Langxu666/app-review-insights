@@ -25,7 +25,7 @@ def get_client() -> OpenAI:
         _client = OpenAI(**client_kwargs)
     return _client
 
-def call_llm(system_prompt: str, user_message: str, temperature: float = 0.1, max_retries: int = 3) -> str:
+def call_llm(system_prompt: str, user_message: str, temperature: float = 0.1, max_retries: int = 3, max_tokens: int = 4096) -> str:
     client = get_client()
     
     for attempt in range(max_retries):
@@ -37,7 +37,7 @@ def call_llm(system_prompt: str, user_message: str, temperature: float = 0.1, ma
                     {"role": "user", "content": user_message},
                 ],
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=max_tokens,
                 timeout=180,
             )
             
@@ -83,19 +83,92 @@ def _fix_json_trailing_commas(json_str: str) -> str:
     json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
     return json_str
 
+
+def _fix_unescaped_strings(json_str: str) -> str:
+    """Fix unescaped newlines and control characters within JSON string values.
+    
+    This handles the common LLM issue where review text containing newlines
+    is not properly escaped in the generated JSON.
+    """
+    result = []
+    in_string = False
+    escape_next = False
+    i = 0
+    while i < len(json_str):
+        ch = json_str[i]
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+            i += 1
+            continue
+        if ch == '\\':
+            result.append(ch)
+            escape_next = True
+            i += 1
+            continue
+        if ch == '"':
+            result.append(ch)
+            in_string = not in_string
+            i += 1
+            continue
+        if in_string and ch == '\n':
+            result.append('\\n')
+        elif in_string and ch == '\r':
+            result.append('\\r')
+        elif in_string and ch == '\t':
+            result.append('\\t')
+        elif in_string and ord(ch) < 0x20:
+            result.append(f'\\u{ord(ch):04x}')
+        else:
+            result.append(ch)
+        i += 1
+    return ''.join(result)
+
+
 def _fix_truncated_json(json_str: str) -> str:
-    open_braces = json_str.count('{')
-    close_braces = json_str.count('}')
-    open_brackets = json_str.count('[')
-    close_brackets = json_str.count(']')
+    """Fix truncated JSON by tracking string state and closing incomplete structures.
     
-    for _ in range(open_braces - close_braces):
-        json_str += '}'
-    for _ in range(open_brackets - close_brackets):
-        json_str += ']'
+    Unlike simple character counting, this tracks whether we're inside a string
+    to avoid { and [ characters in review text corrupting the brace count.
+    """
+    # Track nesting state properly (accounting for strings)
+    in_string = False
+    escape_next = False
+    open_braces = 0
+    open_brackets = 0
     
-    if json_str.count('"') % 2 != 0:
+    for ch in json_str:
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\':
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if not in_string:
+            if ch == '{':
+                open_braces += 1
+            elif ch == '}':
+                open_braces -= 1
+            elif ch == '[':
+                open_brackets += 1
+            elif ch == ']':
+                open_brackets -= 1
+    
+    # Close any open string
+    if in_string:
         json_str += '"'
+    
+    # Remove trailing comma before closing
+    json_str = json_str.rstrip()
+    if json_str.endswith(','):
+        json_str = json_str[:-1].rstrip()
+    
+    # Close open structures
+    json_str += ']' * max(0, open_brackets)
+    json_str += '}' * max(0, open_braces)
     
     return json_str
 
@@ -108,7 +181,15 @@ def parse_json_response(response: str) -> dict:
     except json.JSONDecodeError:
         pass
     
-    fixed_response = _fix_json_trailing_commas(response)
+    # Fix unescaped control characters in JSON strings
+    fixed_response = _fix_unescaped_strings(response)
+    
+    try:
+        return json.loads(fixed_response)
+    except json.JSONDecodeError:
+        pass
+    
+    fixed_response = _fix_json_trailing_commas(fixed_response)
     
     try:
         return json.loads(fixed_response)

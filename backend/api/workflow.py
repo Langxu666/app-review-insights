@@ -296,7 +296,12 @@ class WorkflowEngine:
 
             prd = self.artifacts.get("prd")
             if prd is not None:
-                data["prd_draft"] = prd
+                # Unwrap: generate_prd returns {"prd_draft": PRDDraft, ...}
+                # Frontend expects the PRDDraft directly, not the wrapper dict
+                if isinstance(prd, dict) and "prd_draft" in prd:
+                    data["prd_draft"] = prd["prd_draft"]
+                else:
+                    data["prd_draft"] = prd
 
             tests = self.artifacts.get("tests")
             if tests is not None:

@@ -32,9 +32,12 @@ class VersionPlan(BaseModel):
 
 class UserStory(BaseModel):
     id: str = Field(..., description="User story ID")
-    role: str = Field(..., description="User role")
-    goal: str = Field(..., description="User goal")
-    benefit: str = Field(..., description="Expected benefit")
+    role: str = Field(..., description="User role (Chinese)")
+    goal: str = Field(..., description="User goal (Chinese)")
+    benefit: str = Field(..., description="Expected benefit (Chinese)")
+    role_en: Optional[str] = Field(None, description="User role (English)")
+    goal_en: Optional[str] = Field(None, description="User goal (English)")
+    benefit_en: Optional[str] = Field(None, description="Expected benefit (English)")
 
 class PRDDraft(BaseModel):
     title: str = Field(..., description="PRD title")

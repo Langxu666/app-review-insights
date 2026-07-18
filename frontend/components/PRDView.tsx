@@ -35,18 +35,34 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
 // ═══════════════════════════════════════════
 
 function UserStoryCard({ story }: { story: UserStory }) {
+  const hasEnglish = !!(story.role_en && story.goal_en && story.benefit_en);
+
   return (
-    <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/60 to-white p-3.5">
+    <div className="rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/60 to-white p-3.5 space-y-2">
+      {/* Chinese version */}
       <p className="text-sm text-slate-700 leading-relaxed">
-        <span className="font-semibold text-indigo-600">作为</span>{" "}
-        <span className="text-indigo-600 font-medium">{story.role}</span>
+        <span className="text-indigo-500">作为</span>{" "}
+        <span className="text-indigo-700 font-medium">{story.role}</span>
         <span className="text-indigo-400">，</span>
-        <span className="font-semibold text-indigo-600"> 我想要</span>{" "}
-        <span className="text-indigo-600 font-medium">{story.goal}</span>
+        <span className="text-indigo-500">我想要</span>{" "}
+        <span className="text-indigo-700 font-medium">{story.goal}</span>
         <span className="text-indigo-400">，</span>
-        <span className="font-semibold text-indigo-600"> 以便</span>{" "}
-        <span className="text-indigo-600 font-medium">{story.benefit}</span>
+        <span className="text-indigo-500">以便</span>{" "}
+        <span className="text-indigo-700 font-medium">{story.benefit}</span>
       </p>
+      {/* English version */}
+      {hasEnglish && (
+        <p className="text-xs text-slate-500 leading-relaxed border-t border-indigo-100 pt-2">
+          <span className="text-slate-400">As a</span>{" "}
+          <span className="text-slate-600 font-medium">{story.role_en}</span>
+          <span className="text-slate-400">,</span>
+          <span className="text-slate-400"> I want</span>{" "}
+          <span className="text-slate-600 font-medium">{story.goal_en}</span>
+          <span className="text-slate-400">,</span>
+          <span className="text-slate-400"> so that</span>{" "}
+          <span className="text-slate-600 font-medium">{story.benefit_en}</span>
+        </p>
+      )}
     </div>
   );
 }

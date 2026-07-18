@@ -55,6 +55,9 @@ export interface UserStory {
   role: string;
   goal: string;
   benefit: string;
+  role_en?: string | null;
+  goal_en?: string | null;
+  benefit_en?: string | null;
 }
 
 export interface Requirement {

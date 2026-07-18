@@ -89,7 +89,7 @@ def _classify_batch(batch_reviews: List[dict], system_prompt: str, analysis_goal
     
     try:
         user_message = _build_user_message(batch_reviews, analysis_goal)
-        response = call_llm(system_prompt, user_message, temperature=0.1)
+        response = call_llm(system_prompt, user_message, temperature=0.1, max_tokens=8192)
         
         raw_results = _parse_classification_results(response)
         
