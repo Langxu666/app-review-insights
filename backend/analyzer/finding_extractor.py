@@ -66,16 +66,20 @@ def _parse_findings(response: str) -> List[dict]:
         logger.error(f"Failed to parse findings: {parsed['error']}")
         return []
     
-    if "findings" not in parsed:
-        logger.error("findings field not found in response")
-        return []
+    if isinstance(parsed, list):
+        logger.info("Response is a direct list, treating as findings")
+        return parsed
     
-    findings = parsed["findings"]
-    if not isinstance(findings, list):
+    if "findings" in parsed:
+        findings = parsed["findings"]
+        if isinstance(findings, list):
+            return findings
         logger.error("findings is not a list")
         return []
     
-    return findings
+    logger.error("findings field not found in response")
+    logger.debug(f"Response keys: {list(parsed.keys())}")
+    return []
 
 
 def _validate_finding(finding: dict, valid_review_ids: set) -> bool:

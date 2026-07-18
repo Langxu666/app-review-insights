@@ -67,16 +67,20 @@ def _parse_classification_results(response: str) -> List[dict]:
         logger.error(f"Failed to parse classification results: {parsed['error']}")
         return []
     
-    if "classification_results" not in parsed:
-        logger.error("classification_results field not found in response")
-        return []
+    if isinstance(parsed, list):
+        logger.info("Response is a direct list, treating as classification results")
+        return parsed
     
-    results = parsed["classification_results"]
-    if not isinstance(results, list):
+    if "classification_results" in parsed:
+        results = parsed["classification_results"]
+        if isinstance(results, list):
+            return results
         logger.error("classification_results is not a list")
         return []
     
-    return results
+    logger.error("classification_results field not found in response")
+    logger.debug(f"Response keys: {list(parsed.keys())}")
+    return []
 
 
 def _classify_batch(batch_reviews: List[dict], system_prompt: str, analysis_goal: Optional[str] = None) -> List[ClassificationResult]:

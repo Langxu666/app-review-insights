@@ -38,7 +38,7 @@ def call_llm(system_prompt: str, user_message: str, temperature: float = 0.1, ma
                 ],
                 temperature=temperature,
                 max_tokens=4096,
-                timeout=60,
+                timeout=180,
             )
             
             result = response.choices[0].message.content

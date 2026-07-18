@@ -68,6 +68,10 @@ def _parse_prd(response: str) -> dict:
         logger.error(f"Failed to parse PRD: {parsed['error']}")
         return {}
     
+    if isinstance(parsed, list):
+        logger.error("Response is a list, expected dict")
+        return {}
+    
     if "prd_draft" not in parsed:
         logger.error("prd_draft field not found in response")
         return {}
