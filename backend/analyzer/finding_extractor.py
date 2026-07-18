@@ -163,6 +163,35 @@ def extract_findings(classification_results: List[Any], analysis_goal: Optional[
         if not finding.get("conflicting_evidence"):
             finding["conflicting_evidence"] = []
         
+        # Normalize conflicting_evidence: LLM sometimes returns objects like
+        # {"review_id": "...", "excerpt": "..."} instead of plain strings
+        if isinstance(finding.get("conflicting_evidence"), list):
+            normalized_ce = []
+            for item in finding["conflicting_evidence"]:
+                if isinstance(item, str):
+                    normalized_ce.append(item)
+                elif isinstance(item, dict):
+                    rid = item.get("review_id") or item.get("id", "")
+                    if rid:
+                        normalized_ce.append(str(rid))
+                else:
+                    normalized_ce.append(str(item))
+            finding["conflicting_evidence"] = normalized_ce
+        
+        # Normalize supporting_review_ids similarly
+        if isinstance(finding.get("supporting_review_ids"), list):
+            normalized_sr = []
+            for item in finding["supporting_review_ids"]:
+                if isinstance(item, str):
+                    normalized_sr.append(item)
+                elif isinstance(item, dict):
+                    rid = item.get("review_id") or item.get("id", "")
+                    if rid:
+                        normalized_sr.append(str(rid))
+                else:
+                    normalized_sr.append(str(item))
+            finding["supporting_review_ids"] = normalized_sr
+        
         if not finding.get("assumptions"):
             finding["assumptions"] = []
         

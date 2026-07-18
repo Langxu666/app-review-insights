@@ -120,7 +120,7 @@ export default function ArtifactTabs({ artifacts }: ArtifactTabsProps) {
         case "classification":
           return <ClassificationView classifications={artifacts.classification_results ?? []} />;
         case "findings":
-          return <FindingsList findings={artifacts.findings ?? []} />;
+          return <FindingsList findings={artifacts.findings ?? []} reviews={artifacts.cleaned_data ?? artifacts.raw_reviews ?? []} />;
         case "prd":
           if (!artifacts.prd_draft) {
             return (

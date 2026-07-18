@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Finding, FindingSeverity, EvidenceSufficiency } from "@/types";
+import type { Finding, FindingSeverity, EvidenceSufficiency, Review } from "@/types";
 
 // ═══════════════════════════════════════════
 // Severity Config
@@ -55,7 +55,7 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
 // FindingCard
 // ═══════════════════════════════════════════
 
-function FindingCard({ finding, index }: { finding: Finding; index: number }) {
+function FindingCard({ finding, index, reviewMap }: { finding: Finding; index: number; reviewMap: Map<string, Review> }) {
   const [expanded, setExpanded] = useState(false);
   const sev = SEVERITY_CONFIG[finding.severity] ?? SEVERITY_CONFIG.medium;
   const evColor = EVIDENCE_COLORS[finding.evidence_sufficiency] ?? "text-slate-600 bg-slate-50";
@@ -149,12 +149,39 @@ function FindingCard({ finding, index }: { finding: Finding; index: number }) {
                 <span className="w-1 h-3 rounded-full bg-orange-400" />
                 冲突证据
               </h5>
-              <ul className="space-y-1.5">
-                {finding.conflicting_evidence.map((evidence, i) => (
-                  <li key={i} className="text-xs text-orange-600 pl-3 border-l-2 border-orange-200">
-                    {evidence}
-                  </li>
-                ))}
+              <ul className="space-y-2">
+                {finding.conflicting_evidence.map((evidenceId, i) => {
+                  const review = reviewMap.get(evidenceId);
+                  return (
+                    <li key={i} className="text-xs pl-3 border-l-2 border-orange-200">
+                      {review ? (
+                        <div className="bg-white rounded-lg border border-orange-100 p-2 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-medium text-orange-500">
+                              {review.author || "匿名用户"}
+                            </span>
+                            <span className="text-[11px] text-orange-300">
+                              {"★".repeat(Math.round(review.rating))}
+                            </span>
+                            <span className="text-[10px] text-orange-300 font-mono">
+                              #{evidenceId}
+                            </span>
+                          </div>
+                          <p className="text-slate-600 italic leading-relaxed">
+                            &ldquo;{review.content.length > 120
+                              ? review.content.slice(0, 120) + "…"
+                              : review.content}&rdquo;
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-orange-500 bg-orange-50 rounded-lg p-2 border border-orange-100">
+                          <span className="font-mono">Review #{evidenceId}</span>
+                          <span className="ml-1 text-orange-400">— 未找到对应评论内容</span>
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -201,9 +228,10 @@ function FindingCard({ finding, index }: { finding: Finding; index: number }) {
 
 interface FindingsListProps {
   findings: Finding[];
+  reviews: Review[];
 }
 
-export default function FindingsList({ findings }: FindingsListProps) {
+export default function FindingsList({ findings, reviews }: FindingsListProps) {
   if (!findings || findings.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -212,6 +240,12 @@ export default function FindingsList({ findings }: FindingsListProps) {
         <p className="text-xs mt-1 text-slate-300">分析洞察结果将在此显示</p>
       </div>
     );
+  }
+
+  // Build review lookup map for conflicting evidence
+  const reviewMap = new Map<string, Review>();
+  for (const r of reviews) {
+    if (r.id) reviewMap.set(r.id, r);
   }
 
   const severityOrder: FindingSeverity[] = ["critical", "high", "medium", "low"];
@@ -230,7 +264,7 @@ export default function FindingsList({ findings }: FindingsListProps) {
 
       <div className="max-h-[600px] space-y-3 overflow-y-auto pr-1">
         {sorted.map((finding, i) => (
-          <FindingCard key={finding.finding_id} finding={finding} index={i} />
+          <FindingCard key={finding.finding_id} finding={finding} index={i} reviewMap={reviewMap} />
         ))}
       </div>
     </div>
