@@ -7,12 +7,23 @@ import type { TestCase } from "@/types";
 // TestCaseCard
 // ═══════════════════════════════════════════
 
-function TestCaseCard({ testCase, index }: { testCase: TestCase; index: number }) {
+function TestCaseCard({ testCase, index, highlightedTestId, onNavigateToRequirement }: {
+  testCase: TestCase;
+  index: number;
+  highlightedTestId?: string | null;
+  onNavigateToRequirement?: (reqId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(true);
+  const isHighlighted = highlightedTestId === testCase.id;
 
   return (
     <div
-      className="rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
+      id={`test-${testCase.id}`}
+      className={`rounded-xl border bg-white shadow-sm hover:shadow-md transition-all duration-500 overflow-hidden ${
+        isHighlighted
+          ? "border-blue-400 ring-2 ring-blue-200 bg-blue-50/30"
+          : "border-slate-200"
+      }`}
       style={{ animationDelay: `${index * 40}ms` }}
     >
       {/* Header */}
@@ -33,9 +44,19 @@ function TestCaseCard({ testCase, index }: { testCase: TestCase; index: number }
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {testCase.related_requirement && (
-            <span className="rounded-lg bg-blue-50 border border-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-              {testCase.related_requirement}
-            </span>
+            onNavigateToRequirement ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); onNavigateToRequirement(testCase.related_requirement!); }}
+                className="rounded-lg bg-blue-50 border border-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                title={`跳转到需求 ${testCase.related_requirement}`}
+              >
+                {testCase.related_requirement} →
+              </button>
+            ) : (
+              <span className="rounded-lg bg-blue-50 border border-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                {testCase.related_requirement}
+              </span>
+            )
           )}
           <svg
             className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
@@ -114,9 +135,11 @@ function TestCaseCard({ testCase, index }: { testCase: TestCase; index: number }
 
 interface TestCasesListProps {
   testCases: TestCase[];
+  highlightedTestId?: string | null;
+  onNavigateToRequirement?: (reqId: string) => void;
 }
 
-export default function TestCasesList({ testCases }: TestCasesListProps) {
+export default function TestCasesList({ testCases, highlightedTestId, onNavigateToRequirement }: TestCasesListProps) {
   const [expandAll, setExpandAll] = useState(true);
 
   if (!testCases || testCases.length === 0) {
@@ -154,7 +177,9 @@ export default function TestCasesList({ testCases }: TestCasesListProps) {
 
       <div className="max-h-[600px] space-y-2.5 overflow-y-auto pr-1">
         {testCases.map((tc, i) => (
-          <TestCaseCard key={tc.id} testCase={tc} index={i} />
+          <TestCaseCard key={tc.id} testCase={tc} index={i}
+            highlightedTestId={highlightedTestId}
+            onNavigateToRequirement={onNavigateToRequirement} />
         ))}
       </div>
     </div>

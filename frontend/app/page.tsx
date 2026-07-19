@@ -15,6 +15,7 @@ import ArtifactTabs from "@/components/ArtifactTabs";
 // ═══════════════════════════════════════════
 
 type DataSource = "appstore" | "import";
+type TabKey = "raw_reviews" | "cleaned_data" | "classification" | "findings" | "prd" | "test_cases";
 
 // ═══════════════════════════════════════════
 // Icons (inline SVGs for zero-dependency)
@@ -305,6 +306,11 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [stageStates, setStageStates] = useState<Record<string, StageStatus>>({});
 
+  // ── Traceability navigation ──
+  const [activeTab, setActiveTab] = useState<TabKey>("raw_reviews");
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  const [highlightType, setHighlightType] = useState<"review" | "finding" | "requirement" | "test" | null>(null);
+
   // ── Data source toggle ──
   const [dataSource, setDataSource] = useState<DataSource>("appstore");
 
@@ -359,6 +365,51 @@ export default function Home() {
   // ── Cancel ──
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
+  }, []);
+
+  // ── Traceability navigation ──
+  const navigateToReview = useCallback((reviewId: string) => {
+    setActiveTab("raw_reviews");
+    setHighlightedItemId(reviewId);
+    setHighlightType("review");
+    setTimeout(() => {
+      const el = document.getElementById(`review-${reviewId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    setTimeout(() => setHighlightedItemId(null), 3000);
+  }, []);
+
+  const navigateToFinding = useCallback((findingId: string) => {
+    setActiveTab("findings");
+    setHighlightedItemId(findingId);
+    setHighlightType("finding");
+    setTimeout(() => {
+      const el = document.getElementById(`finding-${findingId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    setTimeout(() => setHighlightedItemId(null), 3000);
+  }, []);
+
+  const navigateToRequirement = useCallback((reqId: string) => {
+    setActiveTab("prd");
+    setHighlightedItemId(reqId);
+    setHighlightType("requirement");
+    setTimeout(() => {
+      const el = document.getElementById(`req-${reqId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    setTimeout(() => setHighlightedItemId(null), 3000);
+  }, []);
+
+  const navigateToTest = useCallback((testId: string) => {
+    setActiveTab("test_cases");
+    setHighlightedItemId(testId);
+    setHighlightType("test");
+    setTimeout(() => {
+      const el = document.getElementById(`test-${testId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 150);
+    setTimeout(() => setHighlightedItemId(null), 3000);
   }, []);
 
   // ── Analyze ──
@@ -804,7 +855,16 @@ export default function Home() {
             <main id="main-content" className="order-1 lg:order-2 min-w-0" aria-label="分析结果">
               <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-4 sm:p-6 animate-fade-in">
                 {hasArtifacts ? (
-                  <ArtifactTabs artifacts={artifacts} />
+                  <ArtifactTabs
+                    artifacts={artifacts}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    highlightedItemId={highlightedItemId}
+                    highlightType={highlightType}
+                    onNavigateToReview={navigateToReview}
+                    onNavigateToFinding={navigateToFinding}
+                    onNavigateToRequirement={navigateToRequirement}
+                  />
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                     <SvgIcon className="w-12 h-12 mb-3 opacity-40">{Icons.document}</SvgIcon>

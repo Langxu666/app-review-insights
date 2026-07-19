@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Review } from "@/types";
 
 // ═══════════════════════════════════════════
@@ -68,9 +68,10 @@ function formatDate(dateStr: string): string {
 
 interface ReviewListProps {
   reviews: Review[];
+  highlightedReviewId?: string | null;
 }
 
-export default function ReviewList({ reviews }: ReviewListProps) {
+export default function ReviewList({ reviews, highlightedReviewId }: ReviewListProps) {
   const [filterRating, setFilterRating] = useState<number | null>(null);
 
   if (!reviews || reviews.length === 0) {
@@ -86,6 +87,16 @@ export default function ReviewList({ reviews }: ReviewListProps) {
   const filtered = filterRating
     ? reviews.filter((r) => r.rating === filterRating)
     : reviews;
+
+  // Auto-scroll to highlighted review
+  useEffect(() => {
+    if (highlightedReviewId) {
+      setTimeout(() => {
+        document.getElementById(`review-${highlightedReviewId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 150);
+    }
+  }, [highlightedReviewId]);
 
   const ratingCounts = [5, 4, 3, 2, 1].map((r) => ({
     rating: r,
@@ -143,7 +154,12 @@ export default function ReviewList({ reviews }: ReviewListProps) {
           filtered.map((review, i) => (
             <div
               key={review.id}
-              className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-200"
+              id={`review-${review.id}`}
+              className={`rounded-xl border bg-white p-4 shadow-sm hover:shadow-md transition-all duration-500 ${
+                highlightedReviewId === review.id
+                  ? "border-blue-400 ring-2 ring-blue-200 bg-blue-50/30 scale-[1.02]"
+                  : "border-slate-200 hover:border-slate-300"
+              }`}
               style={{ animationDelay: `${i * 30}ms` }}
             >
               <div className="flex items-start justify-between gap-3">

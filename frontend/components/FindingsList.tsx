@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Finding, FindingSeverity, EvidenceSufficiency, Review } from "@/types";
 
 // ═══════════════════════════════════════════
@@ -55,15 +55,36 @@ function ConfidenceBar({ confidence }: { confidence: number }) {
 // FindingCard
 // ═══════════════════════════════════════════
 
-function FindingCard({ finding, index, reviewMap }: { finding: Finding; index: number; reviewMap: Map<string, Review> }) {
+function FindingCard({ finding, index, reviewMap, highlightedFindingId, onNavigateToReview }: {
+  finding: Finding;
+  index: number;
+  reviewMap: Map<string, Review>;
+  highlightedFindingId?: string | null;
+  onNavigateToReview?: (reviewId: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const isHighlighted = highlightedFindingId === finding.finding_id;
   const sev = SEVERITY_CONFIG[finding.severity] ?? SEVERITY_CONFIG.medium;
   const evColor = EVIDENCE_COLORS[finding.evidence_sufficiency] ?? "text-slate-600 bg-slate-50";
 
+  // Auto-expand and scroll when highlighted
+  useEffect(() => {
+    if (isHighlighted) {
+      setExpanded(true);
+      setTimeout(() => cardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+    }
+  }, [isHighlighted]);
+
   return (
     <div
-      className="rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden"
-      style={{ animationDelay: `${index * 50}ms` }}
+      ref={cardRef}
+      id={`finding-${finding.finding_id}`}
+      className={`rounded-xl border bg-white shadow-sm hover:shadow-md transition-all duration-500 overflow-hidden ${
+        isHighlighted
+          ? "border-blue-400 ring-2 ring-blue-200 bg-blue-50/30"
+          : "border-slate-200"
+      }`}
     >
       <div className="p-4">
         {/* Header */}
@@ -128,10 +149,29 @@ function FindingCard({ finding, index, reviewMap }: { finding: Finding; index: n
           {/* Supporting evidence */}
           {finding.supporting_excerpts.length > 0 && (
             <div>
-              <h5 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span className="w-1 h-3 rounded-full bg-emerald-400" />
-                支持证据
-              </h5>
+              <div className="flex items-center gap-3 mb-2">
+                <h5 className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1 h-3 rounded-full bg-emerald-400" />
+                  支持证据
+                </h5>
+                {onNavigateToReview && finding.supporting_review_ids.length > 0 && (
+                  <span className="text-[10px] text-slate-400">
+                    来自{" "}
+                    {finding.supporting_review_ids.map((rid, i) => (
+                      <span key={rid}>
+                        {i > 0 && ", "}
+                        <button
+                          onClick={() => onNavigateToReview(rid)}
+                          className="text-blue-500 hover:text-blue-700 underline font-mono"
+                          title={`跳转到评论 ${rid}`}
+                        >
+                          {rid}
+                        </button>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
               <ul className="space-y-1.5">
                 {finding.supporting_excerpts.map((excerpt, i) => (
                   <li key={i} className="text-xs text-slate-600 pl-3 border-l-2 border-emerald-200 italic">
@@ -163,9 +203,19 @@ function FindingCard({ finding, index, reviewMap }: { finding: Finding; index: n
                             <span className="text-[11px] text-orange-300">
                               {"★".repeat(Math.round(review.rating))}
                             </span>
-                            <span className="text-[10px] text-orange-300 font-mono">
-                              #{evidenceId}
-                            </span>
+                            {onNavigateToReview ? (
+                              <button
+                                onClick={() => onNavigateToReview(evidenceId)}
+                                className="text-[10px] text-blue-500 hover:text-blue-700 underline font-mono"
+                                title={`跳转到评论 ${evidenceId}`}
+                              >
+                                #{evidenceId}
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-orange-300 font-mono">
+                                #{evidenceId}
+                              </span>
+                            )}
                           </div>
                           <p className="text-slate-600 italic leading-relaxed">
                             &ldquo;{review.content.length > 120
@@ -175,7 +225,17 @@ function FindingCard({ finding, index, reviewMap }: { finding: Finding; index: n
                         </div>
                       ) : (
                         <div className="text-orange-500 bg-orange-50 rounded-lg p-2 border border-orange-100">
-                          <span className="font-mono">Review #{evidenceId}</span>
+                          {onNavigateToReview ? (
+                            <button
+                              onClick={() => onNavigateToReview(evidenceId)}
+                              className="text-blue-500 hover:text-blue-700 underline font-mono text-xs"
+                              title={`跳转到评论 ${evidenceId}`}
+                            >
+                              Review #{evidenceId}
+                            </button>
+                          ) : (
+                            <span className="font-mono">Review #{evidenceId}</span>
+                          )}
                           <span className="ml-1 text-orange-400">— 未找到对应评论内容</span>
                         </div>
                       )}
@@ -229,9 +289,11 @@ function FindingCard({ finding, index, reviewMap }: { finding: Finding; index: n
 interface FindingsListProps {
   findings: Finding[];
   reviews: Review[];
+  highlightedFindingId?: string | null;
+  onNavigateToReview?: (reviewId: string) => void;
 }
 
-export default function FindingsList({ findings, reviews }: FindingsListProps) {
+export default function FindingsList({ findings, reviews, highlightedFindingId, onNavigateToReview }: FindingsListProps) {
   if (!findings || findings.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -264,7 +326,8 @@ export default function FindingsList({ findings, reviews }: FindingsListProps) {
 
       <div className="max-h-[600px] space-y-3 overflow-y-auto pr-1">
         {sorted.map((finding, i) => (
-          <FindingCard key={finding.finding_id} finding={finding} index={i} reviewMap={reviewMap} />
+          <FindingCard key={finding.finding_id} finding={finding} index={i} reviewMap={reviewMap}
+            highlightedFindingId={highlightedFindingId} onNavigateToReview={onNavigateToReview} />
         ))}
       </div>
     </div>

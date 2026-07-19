@@ -72,7 +72,11 @@ function UserStoryCard({ story }: { story: UserStory }) {
 // Requirement Card
 // ═══════════════════════════════════════════
 
-function RequirementCard({ requirement }: { requirement: Requirement }) {
+function RequirementCard({ requirement, onNavigateToFinding, onNavigateToReview }: {
+  requirement: Requirement;
+  onNavigateToFinding?: (findingId: string) => void;
+  onNavigateToReview?: (reviewId: string) => void;
+}) {
   const prio = PRIORITY_CONFIG[requirement.priority] ?? PRIORITY_CONFIG.P3;
 
   return (
@@ -130,6 +134,41 @@ function RequirementCard({ requirement }: { requirement: Requirement }) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {/* Source traceability */}
+      {(requirement.source_finding_ids.length > 0 || requirement.source_review_ids.length > 0) && (
+        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-3 flex-wrap text-[10px] text-slate-400">
+          <span>来源：</span>
+          {requirement.source_finding_ids.length > 0 && onNavigateToFinding && (
+            <span>
+              发现{" "}
+              {requirement.source_finding_ids.map((fid, i) => (
+                <span key={fid}>
+                  {i > 0 && ", "}
+                  <button onClick={() => onNavigateToFinding(fid)}
+                    className="text-indigo-500 hover:text-indigo-700 underline font-mono">
+                    {fid}
+                  </button>
+                </span>
+              ))}
+            </span>
+          )}
+          {requirement.source_review_ids.length > 0 && onNavigateToReview && (
+            <span>
+              评论{" "}
+              {requirement.source_review_ids.map((rid, i) => (
+                <span key={rid}>
+                  {i > 0 && ", "}
+                  <button onClick={() => onNavigateToReview(rid)}
+                    className="text-blue-500 hover:text-blue-700 underline font-mono">
+                    {rid}
+                  </button>
+                </span>
+              ))}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -310,9 +349,12 @@ function ExportButton({ prd }: { prd: PRDDraft }) {
 
 interface PRDViewProps {
   prd: PRDDraft;
+  highlightedReqId?: string | null;
+  onNavigateToFinding?: (findingId: string) => void;
+  onNavigateToReview?: (reviewId: string) => void;
 }
 
-export default function PRDView({ prd }: PRDViewProps) {
+export default function PRDView({ prd, highlightedReqId, onNavigateToFinding, onNavigateToReview }: PRDViewProps) {
   if (!prd) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -395,7 +437,15 @@ export default function PRDView({ prd }: PRDViewProps) {
           />
           <div className="max-h-[600px] space-y-3 overflow-y-auto pr-1">
             {prd.requirements.map((req) => (
-              <RequirementCard key={req.req_id} requirement={req} />
+              <div key={req.req_id} id={`req-${req.req_id}`} className={
+                highlightedReqId === req.req_id
+                  ? "ring-2 ring-blue-200 rounded-xl transition-all duration-500"
+                  : ""
+              }>
+                <RequirementCard requirement={req}
+                  onNavigateToFinding={onNavigateToFinding}
+                  onNavigateToReview={onNavigateToReview} />
+              </div>
             ))}
           </div>
         </section>

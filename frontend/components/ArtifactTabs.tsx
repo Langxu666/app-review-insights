@@ -94,6 +94,13 @@ function ClassificationView({ classifications }: { classifications: Classificati
 
 interface ArtifactTabsProps {
   artifacts: Artifacts;
+  activeTab?: TabKey;
+  onTabChange?: (tab: TabKey) => void;
+  highlightedItemId?: string | null;
+  highlightType?: "review" | "finding" | "requirement" | "test" | null;
+  onNavigateToReview?: (reviewId: string) => void;
+  onNavigateToFinding?: (findingId: string) => void;
+  onNavigateToRequirement?: (reqId: string) => void;
 }
 
 function getTabCount(artifacts: Artifacts, tab: TabKey): number {
@@ -107,20 +114,40 @@ function getTabCount(artifacts: Artifacts, tab: TabKey): number {
   }
 }
 
-export default function ArtifactTabs({ artifacts }: ArtifactTabsProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>("raw_reviews");
+export default function ArtifactTabs({
+  artifacts,
+  activeTab: externalTab,
+  onTabChange,
+  highlightedItemId,
+  highlightType,
+  onNavigateToReview,
+  onNavigateToFinding,
+  onNavigateToRequirement,
+}: ArtifactTabsProps) {
+  const [internalTab, setInternalTab] = useState<TabKey>("raw_reviews");
+  const activeTab = externalTab ?? internalTab;
+
+  const handleTabChange = (tab: TabKey) => {
+    setInternalTab(tab);
+    onTabChange?.(tab);
+  };
 
   const renderTabContent = () => {
     const content = (() => {
       switch (activeTab) {
         case "raw_reviews":
-          return <ReviewList reviews={artifacts.raw_reviews ?? []} />;
+          return <ReviewList reviews={artifacts.raw_reviews ?? []}
+            highlightedReviewId={highlightType === "review" ? highlightedItemId : null} />;
         case "cleaned_data":
-          return <ReviewList reviews={artifacts.cleaned_data ?? []} />;
+          return <ReviewList reviews={artifacts.cleaned_data ?? []}
+            highlightedReviewId={highlightType === "review" ? highlightedItemId : null} />;
         case "classification":
           return <ClassificationView classifications={artifacts.classification_results ?? []} />;
         case "findings":
-          return <FindingsList findings={artifacts.findings ?? []} reviews={artifacts.cleaned_data ?? artifacts.raw_reviews ?? []} />;
+          return <FindingsList findings={artifacts.findings ?? []}
+            reviews={artifacts.cleaned_data ?? artifacts.raw_reviews ?? []}
+            highlightedFindingId={highlightType === "finding" ? highlightedItemId : null}
+            onNavigateToReview={onNavigateToReview} />;
         case "prd":
           if (!artifacts.prd_draft) {
             return (
@@ -131,9 +158,14 @@ export default function ArtifactTabs({ artifacts }: ArtifactTabsProps) {
               </div>
             );
           }
-          return <PRDView prd={artifacts.prd_draft} />;
+          return <PRDView prd={artifacts.prd_draft}
+            highlightedReqId={highlightType === "requirement" ? highlightedItemId : null}
+            onNavigateToFinding={onNavigateToFinding}
+            onNavigateToReview={onNavigateToReview} />;
         case "test_cases":
-          return <TestCasesList testCases={artifacts.test_case_drafts ?? []} />;
+          return <TestCasesList testCases={artifacts.test_case_drafts ?? []}
+            highlightedTestId={highlightType === "test" ? highlightedItemId : null}
+            onNavigateToRequirement={onNavigateToRequirement} />;
         default:
           return null;
       }
@@ -152,7 +184,7 @@ export default function ArtifactTabs({ artifacts }: ArtifactTabsProps) {
           return (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => handleTabChange(tab.key)}
               className={`flex items-center gap-1.5 whitespace-nowrap px-3.5 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px rounded-t-lg ${
                 isActive
                   ? "border-blue-500 text-blue-600 bg-blue-50/50"
