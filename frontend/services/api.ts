@@ -78,14 +78,17 @@ function handleError(error: unknown): never {
  *
  * Stages: collect → clean → classify → extract_findings → generate_prd → generate_tests
  *
- * @param url  - App Store URL of the app to analyze.
- * @param goal - Optional analysis goal to focus the workflow.
- * @returns    - WorkflowResponse with per-stage status and artifact counts.
+ * @param url        - App Store URL of the app to analyze.
+ * @param goal       - Optional analysis goal to focus the workflow.
+ * @param importData - Optional raw review data string (JSON/CSV).
+ * @param signal     - Optional AbortSignal for request cancellation.
+ * @returns          - WorkflowResponse with per-stage status and artifact counts.
  */
 export async function analyzeReviews(
   url?: string,
   goal?: string,
   importData?: string,
+  signal?: AbortSignal,
 ): Promise<AnalyzeResponse> {
   try {
     const { data } = await api.post<AnalyzeResponse>(
@@ -95,10 +98,13 @@ export async function analyzeReviews(
         goal: goal || undefined,
         import_data: importData || undefined,
       },
-      { timeout: 600000 },  // 10 min — LLM pipeline is slow
+      { timeout: 600000, signal },  // 10 min — LLM pipeline is slow
     );
     return data;
   } catch (error) {
+    if (signal?.aborted) {
+      throw new ApiError("Request cancelled", 0);
+    }
     handleError(error);
   }
 }

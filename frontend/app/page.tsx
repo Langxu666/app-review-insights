@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, type DragEvent, type ChangeEvent } from "react";
+import { useState, useCallback, useRef, useEffect, type DragEvent, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/services/api";
 import { analyzeReviews } from "@/services/api";
@@ -312,6 +312,15 @@ export default function Home() {
   const [importPreview, setImportPreview] = useState<{ count: number; preview: string } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [isHoverCancel, setIsHoverCancel] = useState(false);
+
+  // ── Cleanup on unmount ──
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   // ── File handling helpers ──
   const readFile = useCallback((file: File) => {
@@ -345,6 +354,11 @@ export default function Home() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
+  // ── Cancel ──
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   // ── Analyze ──
   const handleAnalyze = useCallback(async () => {
     if (dataSource === "import") {
@@ -356,6 +370,11 @@ export default function Home() {
       if (!url.trim()) return;
     }
 
+    // Cancel any in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setIsAnalyzing(true);
     setResponse(null);
     setArtifacts(null);
@@ -366,6 +385,7 @@ export default function Home() {
         dataSource === "appstore" ? url.trim() : undefined,
         analysisGoal.trim() || undefined,
         dataSource === "import" ? importData : undefined,
+        controller.signal,
       );
       setResponse(result);
       if (result.artifacts_data) {
@@ -375,10 +395,15 @@ export default function Home() {
         setError(result.error ?? "分析过程中出现错误，请查看工作流进度了解详情。");
       }
     } catch (err) {
+      // Silently ignore cancelled requests
+      if (controller.signal.aborted) return;
       const message =
         err instanceof Error ? err.message : "分析请求失败，请检查网络连接后重试。";
       setError(message);
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setIsAnalyzing(false);
     }
   }, [url, analysisGoal, dataSource, importData]);
@@ -630,8 +655,10 @@ export default function Home() {
 
             {/* Submit button */}
             <button
-              onClick={handleAnalyze}
-              disabled={!canSubmit || isAnalyzing}
+              onClick={isAnalyzing && isHoverCancel ? handleCancel : handleAnalyze}
+              disabled={!canSubmit && !isAnalyzing}
+              onMouseEnter={() => setIsHoverCancel(true)}
+              onMouseLeave={() => setIsHoverCancel(false)}
               className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-violet-600 text-white
                 font-semibold rounded-xl text-sm
                 hover:from-blue-700 hover:to-violet-700 hover:shadow-lg hover:shadow-blue-200/40
@@ -640,10 +667,17 @@ export default function Home() {
                 flex items-center justify-center gap-2"
             >
               {isAnalyzing ? (
-                <>
-                  <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  分析中，请耐心等待...
-                </>
+                isHoverCancel ? (
+                  <>
+                    <SvgIcon className="w-5 h-5">{Icons.close}</SvgIcon>
+                    取消分析
+                  </>
+                ) : (
+                  <>
+                    <div className="w-5 h-5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    分析中，请耐心等待...
+                  </>
+                )
               ) : (
                 <>
                   <SvgIcon className="w-5 h-5">{Icons.cog}</SvgIcon>
