@@ -83,14 +83,20 @@ function handleError(error: unknown): never {
  * @returns    - WorkflowResponse with per-stage status and artifact counts.
  */
 export async function analyzeReviews(
-  url: string,
+  url?: string,
   goal?: string,
+  importData?: string,
 ): Promise<AnalyzeResponse> {
   try {
-    const { data } = await api.post<AnalyzeResponse>("/api/analyze", {
-      url,
-      goal: goal || undefined,
-    });
+    const { data } = await api.post<AnalyzeResponse>(
+      "/api/analyze",
+      {
+        url: url || undefined,
+        goal: goal || undefined,
+        import_data: importData || undefined,
+      },
+      { timeout: 600000 },  // 10 min — LLM pipeline is slow
+    );
     return data;
   } catch (error) {
     handleError(error);
@@ -102,7 +108,10 @@ export async function analyzeReviews(
  */
 export async function healthCheck(): Promise<{ status: string }> {
   try {
-    const { data } = await api.get<{ status: string }>("/api/health");
+    const { data } = await api.get<{ status: string }>(
+      "/api/health",
+      { timeout: 5000 },  // 5s — fast failure when backend is down
+    );
     return data;
   } catch (error) {
     handleError(error);

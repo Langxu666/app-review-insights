@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, type DragEvent, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/services/api";
 import { analyzeReviews } from "@/services/api";
@@ -8,6 +8,12 @@ import type { AnalyzeResponse, Artifacts } from "@/types";
 
 import WorkflowProgress from "@/components/WorkflowProgress";
 import ArtifactTabs from "@/components/ArtifactTabs";
+
+// ═══════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════
+
+type DataSource = "appstore" | "import";
 
 // ═══════════════════════════════════════════
 // Icons (inline SVGs for zero-dependency)
@@ -46,6 +52,18 @@ const Icons = {
   ),
   sparkles: (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+  ),
+  upload: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+  ),
+  fileIcon: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+  ),
+  trash: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+  ),
+  paste: (
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
   ),
 };
 
@@ -118,7 +136,6 @@ const STAGE_LABELS: Record<string, string> = {
 function LoadingState({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
-      {/* Animated ring spinner */}
       <div className="relative">
         <div className="w-20 h-20 rounded-full border-[3px] border-slate-100" />
         <div className="absolute inset-0 w-20 h-20 rounded-full border-[3px] border-transparent border-t-blue-500 border-r-blue-400 animate-spin" />
@@ -235,10 +252,50 @@ function formatDuration(ms: number): string {
 }
 
 // ═══════════════════════════════════════════
+// Helpers
+// ═══════════════════════════════════════════
+
+function tryParsePreview(data: string): { count: number; preview: string } {
+  const trimmed = data.trim();
+  if (!trimmed) return { count: 0, preview: "" };
+
+  // Try JSON first
+  if (trimmed[0] === "[" || trimmed[0] === "{") {
+    try {
+      let parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object" && "reviews" in parsed && Array.isArray(parsed.reviews)) {
+        parsed = parsed.reviews;
+      }
+      if (Array.isArray(parsed)) {
+        const count = parsed.length;
+        const preview = JSON.stringify(parsed.slice(0, 3), null, 2);
+        return { count, preview };
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Try CSV
+  const lines = trimmed.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length > 1) {
+    const header = lines[0];
+    if (header.includes(",") && header.toLowerCase().includes("content")) {
+      return { count: lines.length - 1, preview: lines.slice(0, 4).join("\n") };
+    }
+  }
+
+  return { count: 0, preview: trimmed.slice(0, 500) };
+}
+
+function parseReviewCount(data: string): number {
+  return tryParsePreview(data).count;
+}
+
+// ═══════════════════════════════════════════
 // Main Page
 // ═══════════════════════════════════════════
 
 export default function Home() {
+  // ── Common state ──
   const [url, setUrl] = useState("");
   const [analysisGoal, setAnalysisGoal] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -246,9 +303,58 @@ export default function Home() {
   const [artifacts, setArtifacts] = useState<Artifacts | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // ── Data source toggle ──
+  const [dataSource, setDataSource] = useState<DataSource>("appstore");
+
+  // ── Import states ──
+  const [importData, setImportData] = useState("");
+  const [importFileName, setImportFileName] = useState("");
+  const [importPreview, setImportPreview] = useState<{ count: number; preview: string } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── File handling helpers ──
+  const readFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      setImportData(text);
+      setImportFileName(file.name);
+      const parsed = tryParsePreview(text);
+      setImportPreview(parsed);
+    };
+    reader.readAsText(file);
+  }, []);
+
+  const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) readFile(file);
+  }, [readFile]);
+
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) readFile(file);
+  }, [readFile]);
+
+  const handleClearImport = useCallback(() => {
+    setImportData("");
+    setImportFileName("");
+    setImportPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  // ── Analyze ──
   const handleAnalyze = useCallback(async () => {
-    const trimmedUrl = url.trim();
-    if (!trimmedUrl) return;
+    if (dataSource === "import") {
+      if (!importData.trim()) {
+        setError("请上传文件或粘贴数据后再开始分析");
+        return;
+      }
+    } else {
+      if (!url.trim()) return;
+    }
 
     setIsAnalyzing(true);
     setResponse(null);
@@ -257,8 +363,9 @@ export default function Home() {
 
     try {
       const result = await analyzeReviews(
-        trimmedUrl,
+        dataSource === "appstore" ? url.trim() : undefined,
         analysisGoal.trim() || undefined,
+        dataSource === "import" ? importData : undefined,
       );
       setResponse(result);
       if (result.artifacts_data) {
@@ -274,7 +381,9 @@ export default function Home() {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [url, analysisGoal]);
+  }, [url, analysisGoal, dataSource, importData]);
+
+  const canSubmit = dataSource === "import" ? !!importData.trim() : !!url.trim();
 
   const hasResults = response !== null;
   const hasArtifacts = artifacts !== null;
@@ -297,62 +406,232 @@ export default function Home() {
         </header>
 
         {/* ── Input Section ── */}
-        <section className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6 sm:p-8 mb-6 sm:mb-8 animate-fade-in" aria-label="分析输入">
+        <section
+          className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6 sm:p-8 mb-6 sm:mb-8 animate-fade-in"
+          aria-label="分析输入"
+        >
           <h2 className="text-lg sm:text-xl font-semibold text-slate-800 mb-5 flex items-center gap-2">
             <SvgIcon className="w-5 h-5 text-blue-600">{Icons.edit}</SvgIcon>
             输入分析信息
           </h2>
 
-          <div className="space-y-4">
-            {/* URL input */}
-            <div>
-              <label htmlFor="url" className="block text-sm font-medium text-slate-700 mb-1.5">
-                App Store URL <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="url"
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && url.trim()) handleAnalyze();
-                }}
-                placeholder="https://apps.apple.com/cn/app/xxx/id1234567890"
-                disabled={isAnalyzing}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm
-                  focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400
-                  transition-all duration-200 placeholder:text-slate-400
-                  disabled:opacity-60 disabled:cursor-not-allowed"
-              />
-            </div>
+          {/* ── Data Source Toggle ── */}
+          <div className="flex bg-slate-100 rounded-xl p-1 mb-5">
+            <button
+              onClick={() => setDataSource("appstore")}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
+                dataSource === "appstore"
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <SvgIcon className="w-4 h-4">{Icons.search}</SvgIcon>
+                从 App Store 采集
+              </span>
+            </button>
+            <button
+              onClick={() => setDataSource("import")}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
+                dataSource === "import"
+                  ? "bg-white text-slate-800 shadow-sm"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-2">
+                <SvgIcon className="w-4 h-4">{Icons.upload}</SvgIcon>
+                导入数据
+              </span>
+            </button>
+          </div>
 
-            {/* Goal input */}
-            <div>
-              <label htmlFor="goal" className="block text-sm font-medium text-slate-700 mb-1.5">
-                分析目标
-                <span className="text-slate-400 font-normal ml-1">（可选）</span>
-              </label>
-              <input
-                id="goal"
-                type="text"
-                value={analysisGoal}
-                onChange={(e) => setAnalysisGoal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && url.trim()) handleAnalyze();
-                }}
-                placeholder="例如：用户反馈分析、功能建议提取、Bug 报告汇总"
-                disabled={isAnalyzing}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm
-                  focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400
-                  transition-all duration-200 placeholder:text-slate-400
-                  disabled:opacity-60 disabled:cursor-not-allowed"
-              />
-            </div>
+          <div className="space-y-4">
+            {/* ── App Store mode ── */}
+            {dataSource === "appstore" && (
+              <>
+                <div>
+                  <label htmlFor="url" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    App Store URL <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="url"
+                    type="url"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && url.trim()) handleAnalyze();
+                    }}
+                    placeholder="https://apps.apple.com/cn/app/xxx/id1234567890"
+                    disabled={isAnalyzing}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm
+                      focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400
+                      transition-all duration-200 placeholder:text-slate-400
+                      disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="goal" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    分析目标
+                    <span className="text-slate-400 font-normal ml-1">（可选）</span>
+                  </label>
+                  <input
+                    id="goal"
+                    type="text"
+                    value={analysisGoal}
+                    onChange={(e) => setAnalysisGoal(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && url.trim()) handleAnalyze();
+                    }}
+                    placeholder="例如：用户反馈分析、功能建议提取、Bug 报告汇总"
+                    disabled={isAnalyzing}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm
+                      focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400
+                      transition-all duration-200 placeholder:text-slate-400
+                      disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* ── Import mode ── */}
+            {dataSource === "import" && (
+              <div className="space-y-4">
+                {/* File upload area */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={handleDrop}
+                  className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer ${
+                    isDragOver
+                      ? "border-blue-400 bg-blue-50/50"
+                      : importData
+                        ? "border-emerald-300 bg-emerald-50/30"
+                        : "border-slate-300 bg-slate-50/50 hover:border-slate-400"
+                  }`}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json,.csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    aria-label="选择文件"
+                  />
+
+                  {importData ? (
+                    <div className="flex items-center justify-center gap-3">
+                      <SvgIcon className="w-5 h-5 text-emerald-600">{Icons.check}</SvgIcon>
+                      <span className="text-sm font-medium text-emerald-700">
+                        {importFileName || "已加载数据"}
+                      </span>
+                      <span className="text-xs text-emerald-500">
+                        ({importPreview?.count ?? 0} 条评论)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleClearImport(); }}
+                        className="ml-2 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        title="清除"
+                      >
+                        <SvgIcon className="w-4 h-4">{Icons.trash}</SvgIcon>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <SvgIcon className="w-8 h-8 text-slate-400 mx-auto mb-2">{Icons.upload}</SvgIcon>
+                      <p className="text-sm text-slate-600 font-medium">
+                        拖拽 JSON 或 CSV 文件到此处
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        或点击选择文件（.json / .csv）
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {/* Text paste area */}
+                <div className="relative">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <SvgIcon className="w-4 h-4 text-slate-400">{Icons.paste}</SvgIcon>
+                    <span className="text-xs font-medium text-slate-500">或直接粘贴数据</span>
+                  </div>
+                  <textarea
+                    value={importData}
+                    onChange={(e) => {
+                      setImportData(e.target.value);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                      setImportFileName("");
+                      const parsed = tryParsePreview(e.target.value);
+                      setImportPreview(parsed);
+                    }}
+                    placeholder={`粘贴 JSON 或 CSV 格式的评论数据...\n\nJSON 示例：\n[{"id":"1","rating":5,"content":"Great!","author":"User","date":"2024-01-01"}]\n\nCSV 示例：\nid,rating,content,author,date\n1,5,Great!,User,2024-01-01`}
+                    rows={8}
+                    disabled={isAnalyzing}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono
+                      focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400
+                      transition-all duration-200 placeholder:text-slate-400 resize-y
+                      disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Preview */}
+                {importPreview && importPreview.count > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 animate-fade-in">
+                    <div className="flex items-center gap-2 mb-2">
+                      <SvgIcon className="w-4 h-4 text-emerald-600">{Icons.check}</SvgIcon>
+                      <span className="text-sm font-medium text-emerald-700">
+                        已识别 {importPreview.count} 条评论
+                      </span>
+                    </div>
+                    <pre className="text-xs text-slate-600 bg-white/60 rounded-lg p-3 max-h-40 overflow-auto font-mono whitespace-pre-wrap break-all">
+                      {importPreview.preview}
+                    </pre>
+                  </div>
+                )}
+                {importPreview && importPreview.count === 0 && importData.trim() && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <SvgIcon className="w-4 h-4 text-amber-600">{Icons.alert}</SvgIcon>
+                      <span className="text-sm text-amber-700">
+                        无法识别数据格式，请检查是否为有效的 JSON 或 CSV
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Goal (import mode too) ── */}
+            {dataSource === "import" && (
+              <div>
+                <label htmlFor="goal-import" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  分析目标
+                  <span className="text-slate-400 font-normal ml-1">（可选）</span>
+                </label>
+                <input
+                  id="goal-import"
+                  type="text"
+                  value={analysisGoal}
+                  onChange={(e) => setAnalysisGoal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmit) handleAnalyze();
+                  }}
+                  placeholder="例如：用户反馈分析、功能建议提取、Bug 报告汇总"
+                  disabled={isAnalyzing}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm
+                    focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400
+                    transition-all duration-200 placeholder:text-slate-400
+                    disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+              </div>
+            )}
 
             {/* Submit button */}
             <button
               onClick={handleAnalyze}
-              disabled={!url.trim() || isAnalyzing}
+              disabled={!canSubmit || isAnalyzing}
               className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-violet-600 text-white
                 font-semibold rounded-xl text-sm
                 hover:from-blue-700 hover:to-violet-700 hover:shadow-lg hover:shadow-blue-200/40
@@ -396,7 +675,6 @@ export default function Home() {
         {/* ── Results ── */}
         {!isAnalyzing && hasResults && (
           <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] xl:grid-cols-[300px_1fr] gap-6 sm:gap-8">
-            {/* Sidebar */}
             <aside className="order-2 lg:order-1" aria-label="工作流进度面板">
               <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-5 sm:p-6 lg:sticky lg:top-8 animate-slide-up">
                 <WorkflowProgress stages={response.stages} />
@@ -425,7 +703,6 @@ export default function Home() {
               </div>
             </aside>
 
-            {/* Main content */}
             <main id="main-content" className="order-1 lg:order-2 min-w-0" aria-label="分析结果">
               <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-4 sm:p-6 animate-fade-in">
                 {hasArtifacts ? (

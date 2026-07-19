@@ -2,9 +2,10 @@ import logging
 from enum import Enum
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from collector.apple_collector import collect_reviews
+from collector.data_importer import import_reviews
 from analyzer.cleaner import clean_reviews
 from analyzer.classifier import classify_reviews
 from analyzer.finding_extractor import extract_findings
@@ -19,6 +20,7 @@ class StageStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 class WorkflowStatus(str, Enum):
@@ -29,8 +31,15 @@ class WorkflowStatus(str, Enum):
 
 
 class AnalyzeRequest(BaseModel):
-    url: str = Field(..., description="App Store URL of the app to analyze")
+    url: Optional[str] = Field(None, description="App Store URL (optional if import_data provided)")
     goal: Optional[str] = Field(None, description="Optional analysis goal to focus the workflow")
+    import_data: Optional[str] = Field(None, description="JSON/CSV review data string (optional if url provided)")
+
+    @model_validator(mode="after")
+    def check_at_least_one_input(self) -> "AnalyzeRequest":
+        if not self.url and not self.import_data:
+            raise ValueError("At least one of 'url' or 'import_data' must be provided")
+        return self
 
 
 class StageInfo(BaseModel):
@@ -80,6 +89,9 @@ class WorkflowEngine:
     """Orchestrates the full review analysis workflow.
 
     Stages: collect -> clean -> classify -> extract_findings -> generate_prd -> generate_tests
+
+    When import_data is provided, the collect stage is skipped and reviews
+    are obtained via :func:`collector.data_importer.import_reviews` instead.
     """
 
     STAGE_ORDER = [
@@ -101,28 +113,50 @@ class WorkflowEngine:
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
 
-    def run(self, url: str, goal: Optional[str] = None) -> WorkflowResponse:
+    def run(
+        self,
+        url: Optional[str] = None,
+        goal: Optional[str] = None,
+        import_data: Optional[str] = None,
+    ) -> WorkflowResponse:
         """Execute the full analysis workflow.
+
+        Accepts either an App Store URL or raw import data (JSON/CSV).
+        If import_data is provided, the collect stage is skipped.
 
         Args:
             url: App Store URL of the app to analyze.
             goal: Optional analysis goal to focus classification and finding extraction.
+            import_data: Raw review data in JSON or CSV format.
 
         Returns:
             WorkflowResponse with status, stage info, and artifact counts.
         """
         self.status = WorkflowStatus.RUNNING
         self.started_at = datetime.now()
-        logger.info(f"Workflow started for URL: {url}, goal: {goal}")
 
-        # ── Stage 1: Collect ──
-        reviews = self._run_stage(
-            "collect",
-            lambda: collect_reviews(url),
-            "reviews",
-        )
-        if reviews is None:
-            return self._finish(WorkflowStatus.FAILED, "Collect stage failed")
+        # ── Stage 1: Collect (or Import) ──
+        if import_data:
+            logger.info("Workflow started with import_data, goal: %s", goal)
+            reviews = import_reviews(import_data)
+            self.stages["collect"].status = StageStatus.SKIPPED
+            self.stages["collect"].completed_at = datetime.now()
+            self.artifacts["reviews"] = _serialize(reviews)
+            self.artifacts["reviews_count"] = len(reviews)
+            logger.info(
+                "Imported %d review(s), collect stage skipped", len(reviews)
+            )
+        elif url:
+            logger.info("Workflow started for URL: %s, goal: %s", url, goal)
+            reviews = self._run_stage(
+                "collect",
+                lambda: collect_reviews(url),
+                "reviews",
+            )
+            if reviews is None:
+                return self._finish(WorkflowStatus.FAILED, "Collect stage failed")
+        else:
+            return self._finish(WorkflowStatus.FAILED, "No input provided (url or import_data required)")
 
         # ── Stage 2: Clean ──
         cleaned_result = self._run_stage(
@@ -146,7 +180,6 @@ class WorkflowEngine:
         if classified_result is None:
             return self._finish(WorkflowStatus.FAILED, "Classify stage failed")
 
-        # classify_reviews returns a dict with classification_results key
         if isinstance(classified_result, dict) and "classification_results" in classified_result:
             classification_results = classified_result["classification_results"]
         else:
