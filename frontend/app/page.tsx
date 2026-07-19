@@ -3,8 +3,9 @@
 import { useState, useCallback, useRef, useEffect, type DragEvent, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/services/api";
-import { analyzeReviews } from "@/services/api";
-import type { AnalyzeResponse, Artifacts } from "@/types";
+import { analyzeReviewsStreaming } from "@/services/api";
+import type { SSEEvent } from "@/services/api";
+import type { AnalyzeResponse, Artifacts, StageStatus } from "@/types";
 
 import WorkflowProgress from "@/components/WorkflowProgress";
 import ArtifactTabs from "@/components/ArtifactTabs";
@@ -302,6 +303,7 @@ export default function Home() {
   const [response, setResponse] = useState<AnalyzeResponse | null>(null);
   const [artifacts, setArtifacts] = useState<Artifacts | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stageStates, setStageStates] = useState<Record<string, StageStatus>>({});
 
   // ── Data source toggle ──
   const [dataSource, setDataSource] = useState<DataSource>("appstore");
@@ -379,12 +381,29 @@ export default function Home() {
     setResponse(null);
     setArtifacts(null);
     setError(null);
+    setStageStates({});
 
     try {
-      const result = await analyzeReviews(
+      const result = await analyzeReviewsStreaming(
         dataSource === "appstore" ? url.trim() : undefined,
         analysisGoal.trim() || undefined,
         dataSource === "import" ? importData : undefined,
+        (event: SSEEvent) => {
+          if (event.event === "start") {
+            // Initialize all stages as pending
+            const initial: Record<string, StageStatus> = {};
+            for (const key of Object.keys(event.stages)) {
+              initial[key] = "pending";
+            }
+            setStageStates(initial);
+          } else if (event.event === "stage_update") {
+            setStageStates((prev) => ({
+              ...prev,
+              [event.stage]: event.status as StageStatus,
+            }));
+          }
+          // 'complete' event is handled by the promise resolution
+        },
         controller.signal,
       );
       setResponse(result);
@@ -412,6 +431,17 @@ export default function Home() {
 
   const hasResults = response !== null;
   const hasArtifacts = artifacts !== null;
+
+  // Build StageInfo from streaming stageStates for WorkflowProgress
+  const streamingStages: Record<string, { status: StageStatus; started_at: null; completed_at: null; duration_ms: null; error: null }> | null =
+    isAnalyzing && Object.keys(stageStates).length > 0
+      ? Object.fromEntries(
+          Object.entries(stageStates).map(([key, status]) => [
+            key,
+            { status, started_at: null, completed_at: null, duration_ms: null, error: null },
+          ]),
+        )
+      : null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
@@ -699,10 +729,44 @@ export default function Home() {
           </div>
         )}
 
-        {/* ── Loading ── */}
+        {/* ── Loading / Live Progress ── */}
         {isAnalyzing && (
           <section className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-100 p-6 sm:p-8 mb-6 sm:mb-8" role="status" aria-live="polite" aria-label="分析加载中">
-            <LoadingState message="正在执行分析工作流" />
+            {streamingStages ? (
+              /* ── Live stage progress ── */
+              <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] xl:grid-cols-[300px_1fr] gap-6 sm:gap-8">
+                <aside aria-label="实时工作流进度">
+                  <WorkflowProgress stages={streamingStages} />
+                </aside>
+                <main className="flex items-center justify-center min-h-[200px]">
+                  <div className="flex flex-col items-center gap-4 animate-fade-in">
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-full border-[3px] border-slate-100" />
+                      <div className="absolute inset-0 w-16 h-16 rounded-full border-[3px] border-transparent border-t-blue-500 border-r-blue-400 animate-spin" />
+                      <div className="absolute inset-2 w-12 h-12 rounded-full border-[3px] border-transparent border-b-purple-400 border-l-purple-300 animate-spin-slow" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <SvgIcon className="w-5 h-5 text-blue-500 animate-pulse-soft">
+                          {Icons.sparkles}
+                        </SvgIcon>
+                      </div>
+                    </div>
+                    <p className="text-sm text-slate-500">
+                      {(() => {
+                        const currentStage = Object.entries(stageStates).find(
+                          ([, s]) => s === "running",
+                        );
+                        return currentStage
+                          ? STAGE_LABELS[currentStage[0]] ?? "处理中..."
+                          : "正在初始化...";
+                      })()}
+                    </p>
+                  </div>
+                </main>
+              </div>
+            ) : (
+              /* ── Initial loading (before any SSE event) ── */
+              <LoadingState message="正在连接分析服务..." />
+            )}
           </section>
         )}
 

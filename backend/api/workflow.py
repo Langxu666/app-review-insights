@@ -1,6 +1,8 @@
+import asyncio
+import json
 import logging
 from enum import Enum
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, AsyncGenerator
 from datetime import datetime
 from pydantic import BaseModel, Field, model_validator
 
@@ -155,6 +157,8 @@ class WorkflowEngine:
             )
             if reviews is None:
                 return self._finish(WorkflowStatus.FAILED, "Collect stage failed")
+            if len(reviews) == 0:
+                return self._finish(WorkflowStatus.FAILED, "未采集到任何评论（该 App 的 RSS feed 可能无数据，请尝试导入数据或更换 App Store 链接）")
         else:
             return self._finish(WorkflowStatus.FAILED, "No input provided (url or import_data required)")
 
@@ -223,6 +227,228 @@ class WorkflowEngine:
             return self._finish(WorkflowStatus.FAILED, "Generate tests stage failed")
 
         return self._finish(WorkflowStatus.COMPLETED)
+
+    async def run_streaming(
+        self,
+        url: Optional[str] = None,
+        goal: Optional[str] = None,
+        import_data: Optional[str] = None,
+    ) -> AsyncGenerator[str, None]:
+        """Execute the analysis workflow with SSE streaming progress.
+
+        Yields SSE-formatted JSON events for each stage transition.
+        Use ``asyncio.to_thread`` for synchronous stage code.
+
+        Args:
+            url: App Store URL of the app to analyze.
+            goal: Optional analysis goal.
+            import_data: Raw review data in JSON or CSV format.
+        """
+        try:
+            self.status = WorkflowStatus.RUNNING
+            self.started_at = datetime.now()
+
+            # ── Start event ──
+            stages_snapshot = {
+                name: {"status": s.status.value, "started_at": None, "completed_at": None}
+                for name, s in self.stages.items()
+            }
+            yield self._sse_event("start", status="running", stages=stages_snapshot)
+            await asyncio.sleep(0.1)
+
+            # ── Stage 1: Collect (or Import) ──
+            if import_data:
+                logger.info("Streaming workflow with import_data, goal: %s", goal)
+                reviews = await asyncio.to_thread(import_reviews, import_data)
+                self.stages["collect"].status = StageStatus.SKIPPED
+                self.stages["collect"].completed_at = datetime.now()
+                self.artifacts["reviews"] = _serialize(reviews)
+                self.artifacts["reviews_count"] = len(reviews)
+                yield self._sse_event("stage_update",
+                    stage="collect", status="skipped",
+                    reviews_count=len(reviews))
+            elif url:
+                logger.info("Streaming workflow for URL: %s, goal: %s", url, goal)
+                yield self._sse_event("stage_update", stage="collect", status="running")
+                try:
+                    reviews = await asyncio.to_thread(collect_reviews, url)
+                    self.stages["collect"].status = StageStatus.COMPLETED
+                    self.stages["collect"].completed_at = datetime.now()
+                    self.artifacts["reviews"] = _serialize(reviews)
+                    self.artifacts["reviews_count"] = len(reviews)
+                    yield self._sse_event("stage_update",
+                        stage="collect", status="completed",
+                        reviews_count=len(reviews))
+                except Exception as e:
+                    self.stages["collect"].status = StageStatus.FAILED
+                    self.stages["collect"].error = str(e)
+                    yield self._sse_event("stage_update",
+                        stage="collect", status="failed", error=str(e))
+                    yield self._sse_event("complete", status="failed",
+                        error="Collect stage failed")
+                    return
+
+                if len(reviews) == 0:
+                    yield self._sse_event("complete", status="failed",
+                        error="未采集到任何评论（该 App 的 RSS feed 可能无数据，请尝试导入数据或更换 App Store 链接）")
+                    return
+            else:
+                yield self._sse_event("complete", status="failed",
+                    error="No input provided (url or import_data required)")
+                return
+
+            await asyncio.sleep(0.1)
+
+            # ── Shared analysis pipeline ──
+            for stage_name, stage_func, artifact_key, extra_args in [
+                ("clean", clean_reviews, "cleaned", [reviews]),
+                ("classify", classify_reviews, "classified", [None, {"analysis_goal": goal}]),
+                ("extract_findings", extract_findings, "findings", [None, {"analysis_goal": goal}]),
+                ("generate_prd", generate_prd, "prd", [[], {"analysis_goal": goal}]),
+                ("generate_tests", generate_test_cases, "tests", []),
+            ]:
+                yield self._sse_event("stage_update", stage=stage_name, status="running")
+                try:
+                    if stage_name == "classify":
+                        output = await asyncio.to_thread(stage_func, cleaned_data, analysis_goal=goal)
+                    elif stage_name == "extract_findings":
+                        output = await asyncio.to_thread(stage_func, classification_results, analysis_goal=goal)
+                    elif stage_name == "generate_prd":
+                        output = await asyncio.to_thread(stage_func, findings_list, analysis_goal=goal)
+                    elif stage_name == "generate_tests":
+                        output = await asyncio.to_thread(stage_func, prd_result)
+                    else:
+                        output = await asyncio.to_thread(stage_func, reviews)
+
+                    self.stages[stage_name].status = StageStatus.COMPLETED
+                    self.stages[stage_name].completed_at = datetime.now()
+                    self.artifacts[artifact_key] = _serialize(output)
+                    self._extract_counts(stage_name, output)
+
+                    # Prepare data for stage_update event
+                    yield self._sse_event("stage_update",
+                        stage=stage_name, status="completed",
+                        **self._stage_summary(stage_name, output))
+
+                except Exception as e:
+                    self.stages[stage_name].status = StageStatus.FAILED
+                    self.stages[stage_name].error = str(e)
+                    yield self._sse_event("stage_update",
+                        stage=stage_name, status="failed", error=str(e))
+                    yield self._sse_event("complete", status="failed",
+                        error=f"{stage_name} stage failed: {e}")
+                    return
+
+                # Update pipeline state for next stages
+                if stage_name == "clean":
+                    cleaned_data = output.get("cleaned_data", [])
+                    if not cleaned_data:
+                        removed_dup = output.get("removed_duplicates", 0)
+                        removed_empty = output.get("removed_empty", 0)
+                        total = self.artifacts.get("reviews_count", 0)
+                        yield self._sse_event("complete", status="failed",
+                            error=(
+                                f"清洗后无有效评论（共采集 {total} 条，"
+                                f"去重移除 {removed_dup} 条，无效内容移除 {removed_empty} 条）"
+                            ))
+                        return
+                elif stage_name == "classify":
+                    if isinstance(output, dict) and "classification_results" in output:
+                        classification_results = output["classification_results"]
+                    else:
+                        classification_results = output
+                    if not classification_results:
+                        yield self._sse_event("complete", status="failed",
+                            error="No classification results")
+                        return
+                elif stage_name == "extract_findings":
+                    findings_list = output.get("findings", [])
+                    if not findings_list:
+                        logger.warning("No findings extracted, continuing with empty findings")
+                elif stage_name == "generate_prd":
+                    if isinstance(output, dict) and "error" in output:
+                        yield self._sse_event("stage_update",
+                            stage="generate_prd", status="failed",
+                            error=f"PRD generation error: {output['error']}")
+                        yield self._sse_event("complete", status="failed",
+                            error=output["error"])
+                        return
+                    prd_result = output
+
+                await asyncio.sleep(0.1)
+
+            # ── Complete ──
+            self.status = WorkflowStatus.COMPLETED
+            self.completed_at = datetime.now()
+            duration = (self.completed_at - self.started_at).total_seconds() * 1000 if self.started_at else 0
+
+            artifacts_data = self._build_artifacts_data()
+            summary = {
+                "reviews_count": self.artifacts.get("reviews_count", 0),
+                "cleaned_count": self.artifacts.get("cleaned_count", 0),
+                "classified_count": self.artifacts.get("classified_count", 0),
+                "findings_count": self.artifacts.get("findings_count", 0),
+                "requirements_count": self.artifacts.get("requirements_count", 0),
+                "test_cases_count": self.artifacts.get("test_cases_count", 0),
+            }
+            stages_snapshot = {
+                name: {"status": s.status.value, "started_at": _serialize(s.started_at),
+                       "completed_at": _serialize(s.completed_at), "error": s.error}
+                for name, s in self.stages.items()
+            }
+
+            yield self._sse_event("complete", status="completed",
+                stages=stages_snapshot, artifacts=summary,
+                artifacts_data=artifacts_data, duration_ms=duration)
+
+        except asyncio.CancelledError:
+            logger.info("Streaming workflow cancelled by client disconnect")
+            self.status = WorkflowStatus.FAILED
+            self.error = "Client disconnected"
+            yield self._sse_event("complete", status="failed",
+                error="Client disconnected")
+        except Exception as e:
+            logger.error("Streaming workflow error: %s", e, exc_info=True)
+            self.status = WorkflowStatus.FAILED
+            self.error = str(e)
+            yield self._sse_event("complete", status="failed", error=str(e))
+
+    def _sse_event(self, event: str, **data: Any) -> str:
+        """Format a dict as an SSE data line.
+
+        For 'complete' events, automatically includes the current stages snapshot
+        so the frontend always has stage data regardless of success/failure path.
+        """
+        payload: Dict[str, Any] = {"event": event, **data}
+        if event == "complete" and "stages" not in payload:
+            payload["stages"] = {
+                name: {"status": s.status.value, "started_at": _serialize(s.started_at),
+                       "completed_at": _serialize(s.completed_at), "error": s.error}
+                for name, s in self.stages.items()
+            }
+        return f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+
+    def _stage_summary(self, stage_name: str, output: Any) -> Dict[str, Any]:
+        """Build a summary dict for a completed stage."""
+        summary: Dict[str, Any] = {}
+        if stage_name == "collect" or stage_name == "clean":
+            if isinstance(output, list):
+                summary["count"] = len(output)
+            elif isinstance(output, dict) and "cleaned_data" in output:
+                summary["count"] = len(output["cleaned_data"])
+        elif stage_name == "classify":
+            if isinstance(output, dict) and "classification_results" in output:
+                summary["count"] = len(output["classification_results"])
+            elif isinstance(output, list):
+                summary["count"] = len(output)
+        elif stage_name == "extract_findings":
+            summary["count"] = len(output.get("findings", [])) if isinstance(output, dict) else 0
+        elif stage_name == "generate_prd":
+            if isinstance(output, dict):
+                summary["count"] = output.get("requirements_count", 0)
+        elif stage_name == "generate_tests":
+            summary["count"] = len(output) if isinstance(output, list) else 0
+        return summary
 
     def _run_stage(self, stage_name: str, func, artifact_key: str) -> Optional[Any]:
         """Execute a single workflow stage with timing and error handling.

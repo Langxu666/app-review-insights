@@ -1,6 +1,7 @@
 import re
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from api.workflow import (
     WorkflowEngine,
@@ -60,44 +61,67 @@ def health_check() -> dict:
 
 
 @router.post("/api/analyze", response_model=WorkflowResponse)
-def analyze_reviews(request: AnalyzeRequest) -> WorkflowResponse:
+def analyze_reviews(
+    request_body: AnalyzeRequest,
+    request: Request,
+) -> WorkflowResponse | StreamingResponse:
     """Execute the full review analysis workflow.
 
     Accepts either an App Store URL or raw import data (JSON/CSV).
     If import_data is provided, it takes precedence over url.
 
-    Validation logic:
-      - Only import_data  → skip URL validation
-      - Only url          → validate as Apple App Store URL
-      - Both provided     → import_data takes precedence, skip URL validation
+    Content negotiation:
+      - Accept: text/event-stream  → SSE streaming response (real-time progress)
+      - Otherwise                   → synchronous WorkflowResponse (backward compatible)
 
     Args:
-        request: Contains url, import_data, and an optional analysis goal.
+        request_body: Contains url, import_data, and an optional analysis goal.
 
     Returns:
-        WorkflowResponse with per-stage status and artifact counts.
-
-    Raises:
-        HTTPException(400): Invalid request (no input provided or invalid URL).
-        HTTPException(500): Workflow execution failed.
+        WorkflowResponse or StreamingResponse.
     """
-    url = request.url.strip() if request.url else None
-    import_data = request.import_data.strip() if request.import_data else None
-    goal = request.goal.strip() if request.goal else None
+    url = request_body.url.strip() if request_body.url else None
+    import_data = request_body.import_data.strip() if request_body.import_data else None
+    goal = request_body.goal.strip() if request_body.goal else None
 
     # Validation: only enforce URL format when it's the sole input
     if import_data:
-        # import_data takes precedence — skip URL validation
         pass
     elif url:
         _validate_app_store_url(url)
-    # else: Pydantic model_validator already guarantees at least one is provided
 
+    accept_header = request.headers.get("accept", "")
+
+    # ── SSE streaming path ──
+    if "text/event-stream" in accept_header:
+        logger.info(
+            "Starting streaming analysis: url=%s, has_import_data=%s, goal=%s",
+            url, bool(import_data), goal,
+        )
+
+        async def sse_generator():
+            try:
+                engine = WorkflowEngine()
+                async for event in engine.run_streaming(
+                    url=url, goal=goal, import_data=import_data
+                ):
+                    yield event
+            except Exception as e:
+                logger.error("SSE streaming error: %s", e, exc_info=True)
+
+        return StreamingResponse(
+            sse_generator(),
+            media_type="text/event-stream",
+            headers={
+                "X-Accel-Buffering": "no",
+                "Cache-Control": "no-cache",
+            },
+        )
+
+    # ── Synchronous path (backward compatible) ──
     logger.info(
         "Starting analysis: url=%s, has_import_data=%s, goal=%s",
-        url,
-        bool(import_data),
-        goal,
+        url, bool(import_data), goal,
     )
 
     try:
@@ -119,20 +143,13 @@ def analyze_reviews(request: AnalyzeRequest) -> WorkflowResponse:
 
 
 @router.post("/api/analyze/import", response_model=WorkflowResponse)
-def analyze_imported_reviews(request: AnalyzeRequest) -> WorkflowResponse:
+def analyze_imported_reviews(
+    request_body: AnalyzeRequest,
+    request: Request,
+) -> WorkflowResponse | StreamingResponse:
     """Execute the analysis workflow starting from imported review data.
 
     Convenience endpoint — delegates to the same logic as /api/analyze
     but expects import_data to be provided.
-
-    Args:
-        request: Contains the raw review data and an optional analysis goal.
-
-    Returns:
-        WorkflowResponse with per-stage status and artifact counts.
-
-    Raises:
-        HTTPException(400): Empty or invalid data.
-        HTTPException(500): Workflow execution failed.
     """
-    return analyze_reviews(request)
+    return analyze_reviews(request_body, request)
