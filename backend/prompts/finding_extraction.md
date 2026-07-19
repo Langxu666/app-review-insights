@@ -18,17 +18,20 @@ Each finding MUST include:
 - supporting_review_ids: review IDs that support this finding (minimum 2)
 - supporting_excerpts: key quotes from supporting reviews
 - support_count: number of supporting reviews
-- conflicting_evidence: list of reviews that CONTRADICT this finding
+- conflicting_evidence: list of review ID strings that CONTRADICT this finding. Each entry MUST be a plain string (the review ID), NOT a full review object. If a review contradicts this finding, include ONLY its ID here. Example: ["14308859067", "14307471563"]. Do NOT include complete review content — just the IDs.
 - assumptions: list of conclusions the LLM is INFERRING
 - confidence: 0-1 overall confidence
 - uncertainty_notes: describe any limitations
 - evidence_sufficiency: "sufficient" | "limited" | "insufficient"
+
+⚠️ conflicting_evidence must be a list of strings (review IDs), NOT objects.
 
 Rules:
 1. Minimum 2 supporting reviews per finding
 2. Actively search for contradictory opinions
 3. Distinguish between "users said this" vs "this is likely what they mean"
 4. If evidence is insufficient, do NOT fabricate
+5. conflicting_evidence entries must be review ID strings only — never include full review objects or content
 
 ## Output Format (JSON only)
 
@@ -46,7 +49,7 @@ Rules:
                 "The pricing is not clear at all"
             ],
             "support_count": 5,
-            "conflicting_evidence": [],
+            "conflicting_evidence": ["14309999123"],
             "assumptions": ["Users expected free tier but encountered paid subscription"],
             "confidence": 0.85,
             "uncertainty_notes": "Some users may have missed the subscription details in onboarding",

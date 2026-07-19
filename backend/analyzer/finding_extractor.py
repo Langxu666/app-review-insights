@@ -173,7 +173,22 @@ def extract_findings(classification_results: List[Any], analysis_goal: Optional[
                 elif isinstance(item, dict):
                     rid = item.get("review_id") or item.get("id", "")
                     if rid:
+                        item_preview = str(item)[:100]
+                        logger.warning(
+                            "conflicting_evidence contained object instead of string ID. "
+                            "Extracted review_id=%s from object: %s. "
+                            "Prompt may need updating.",
+                            rid,
+                            item_preview,
+                        )
                         normalized_ce.append(str(rid))
+                    else:
+                        item_preview = str(item)[:100]
+                        logger.warning(
+                            "conflicting_evidence object has no review_id or id field, skipping. "
+                            "Object: %s. Prompt may need updating.",
+                            item_preview,
+                        )
                 else:
                     normalized_ce.append(str(item))
             finding["conflicting_evidence"] = normalized_ce
