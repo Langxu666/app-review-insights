@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from api.routes import router as api_router
+from api.export import router as export_router
 
 load_dotenv()
 
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(export_router)
 
 
 @app.get("/")

@@ -1,143 +1,280 @@
 {
   "prd_draft": {
-    "background": "This fitness and workout app has undergone a significant monetization shift, moving from a free/ad-supported model to a subscription-heavy approach. User feedback analysis (6 validated findings) reveals critical issues around pricing, billing integrity, ad intrusiveness, content quality decline, and technical instability. Despite positive sentiment about workout effectiveness, these problems are driving user churn and negative reviews.",
-    "problem_statement": "Long-time and new users are frustrated by aggressive paywalls, misleading free trials with immediate charges, intrusive 90-second ads that disrupt workouts, declining content quality (AI-generated workouts), and technical issues like login failures and data loss. These problems erode trust, reduce user satisfaction, and threaten the app's retention and revenue.",
-    "supporting_findings": ["F001", "F002", "F003", "F004", "F005", "F006"],
+    "background": "This fitness app offers workout routines with a free trial and subscription model. User feedback analysis reveals significant dissatisfaction with billing practices, forced subscriptions after previously free access, intrusive ads, declining content quality, technical issues, and unmet feature requests. Despite these issues, many users report positive fitness outcomes.",
+    "problem_statement": "Users face deceptive billing practices, a forced subscription paywall after free content removal, intrusive and unskippable ads, declining content quality (including AI-generated workouts), account access issues, and lack of desired features like Apple Watch integration and workout customization. These problems erode trust and reduce user satisfaction and retention.",
+    "supporting_findings": [
+      "F001",
+      "F002",
+      "F003",
+      "F004",
+      "F005",
+      "F006",
+      "F007"
+    ],
     "user_stories": [
       {
-        "role_en": "Long-time free user",
-        "goal_en": "access basic workout features without subscription",
-        "benefit_en": "continue using the app without feeling forced to pay",
-        "role": "长期免费用户",
-        "goal": "无需订阅即可访问基本锻炼功能",
-        "benefit": "继续使用应用，不会感到被迫付费"
-      },
-      {
-        "role_en": "User who signed up for a free trial",
-        "goal_en": "be charged only after the trial ends",
-        "benefit_en": "evaluate the app without financial risk",
-        "role": "注册免费试用的用户",
-        "goal": "仅在试用期结束后被收费",
-        "benefit": "无财务风险地评估应用"
+        "role_en": "User",
+        "goal_en": "sign up for a free trial without being charged immediately",
+        "benefit_en": "I can evaluate the app risk-free and build trust in the service.",
+        "role": "用户",
+        "goal": "注册免费试用而不被立即收费",
+        "benefit": "我可以无风险地评估应用，建立对服务的信任。"
       },
       {
         "role_en": "Free user",
-        "goal_en": "experience non-intrusive ads that do not disrupt workouts",
-        "benefit_en": "focus on exercise without frustration",
+        "goal_en": "watch short, dismissible ads without being redirected to external sites",
+        "benefit_en": "I can enjoy the free version without frustration or app crashes.",
         "role": "免费用户",
-        "goal": "体验不打扰锻炼的无侵入广告",
-        "benefit": "专注锻炼，没有挫败感"
+        "goal": "观看简短、可关闭的广告，不被重定向到外部网站",
+        "benefit": "我可以享受免费版本而不会感到沮丧或应用崩溃。"
       },
       {
-        "role_en": "Paying user",
-        "goal_en": "have consistent and high-quality workout content",
-        "benefit_en": "trust the app and achieve fitness results",
-        "role": "付费用户",
-        "goal": "获得一致且高质量的锻炼内容",
-        "benefit": "信任应用并实现健身效果"
+        "role_en": "Long-time user",
+        "goal_en": "access features that were previously free without a mandatory subscription",
+        "benefit_en": "I can continue using the app I love without feeling betrayed by the monetization change.",
+        "role": "老用户",
+        "goal": "无需强制订阅即可访问之前免费的功能",
+        "benefit": "我可以继续使用我喜爱的应用，而不会因收费模式改变感到背叛。"
       },
       {
-        "role_en": "User",
-        "goal_en": "log in reliably and access my data across devices",
-        "benefit_en": "seamlessly continue my fitness journey",
-        "role": "用户",
-        "goal": "可靠登录并跨设备访问我的数据",
-        "benefit": "无缝继续健身旅程"
+        "role_en": "Paying subscriber",
+        "goal_en": "receive consistent, high-quality workout content without AI-generated inconsistencies",
+        "benefit_en": "I feel my subscription is worth the price and I stay engaged.",
+        "role": "付费订阅用户",
+        "goal": "获得一致、高质量的训练内容，没有AI生成的不一致性",
+        "benefit": "我觉得我的订阅物有所值，并保持参与度。"
+      },
+      {
+        "role_en": "Subscriber with login issues",
+        "goal_en": "reliably log in and access my paid subscription benefits",
+        "benefit_en": "I can use the service I paid for without interruption.",
+        "role": "遇到登录问题的订阅用户",
+        "goal": "可靠地登录并访问我的付费订阅权益",
+        "benefit": "我可以不间断地使用我付费的服务。"
+      },
+      {
+        "role_en": "User seeking customization",
+        "goal_en": "connect my Apple Watch to track calories and integrate with third-party music apps",
+        "benefit_en": "I can have a more personalized and seamless workout experience.",
+        "role": "寻求个性化设置的用户",
+        "goal": "连接我的Apple Watch以跟踪卡路里，并与第三方音乐应用集成",
+        "benefit": "我可以获得更个性化和无缝的训练体验。"
       }
     ],
     "functional_requirements": [
       {
         "id": "FR001",
-        "description": "Restore free access to previously saved workouts and the basic workout library without requiring a subscription.",
-        "source_finding_ids": ["F001", "F005"],
-        "source_review_ids": ["14286721683", "14279948531", "14092968923", "14140886742", "14118161162", "14291852699", "14246967026", "13906711712", "14000557160"],
+        "description": "Implement clear and conspicuous billing disclosures during free trial sign-up, including the exact charge date and amount. Ensure no charges occur before trial end unless explicitly authorized.",
+        "source_finding_ids": [
+          "F001"
+        ],
+        "source_review_ids": [
+          "14276064361",
+          "14222226181",
+          "14212862587",
+          "14204125134",
+          "14166078145",
+          "14165948645",
+          "14019782684",
+          "13956940768"
+        ],
         "priority": "P0",
         "target_version": "v1.1",
-        "effort_estimate": "S",
+        "effort_estimate": "M",
         "is_assumption": false,
-        "acceptance_criteria": "Free users can view and start any workout from the main library without a paywall; previously saved workouts are accessible without payment."
+        "acceptance_criteria": [
+          "Free trial users are not charged until at least 24 hours after trial ends.",
+          "Billing terms are displayed in bold text on the sign-up screen.",
+          "Support can immediately cancel and refund unauthorized charges."
+        ]
       },
       {
         "id": "FR002",
-        "description": "Fix the free trial billing process: ensure users are not charged until after the trial period ends, provide a clear cancellation flow, and improve customer support responsiveness for billing issues.",
-        "source_finding_ids": ["F002"],
-        "source_review_ids": ["14276064361", "14204125134", "14222226181", "13972381558", "13956940768"],
+        "description": "Remove any code that charges users immediately upon accepting a free trial, and fix cancellation process to stop all future charges.",
+        "source_finding_ids": [
+          "F001"
+        ],
+        "source_review_ids": [
+          "14276064361",
+          "14222226181",
+          "14212862587",
+          "14204125134",
+          "14166078145",
+          "14165948645",
+          "14019782684",
+          "13956940768"
+        ],
         "priority": "P0",
         "target_version": "v1.1",
-        "effort_estimate": "M",
-        "is_assumption": false,
-        "acceptance_criteria": "New trial users are not charged until the end of the trial; cancellation is confirmed via email; billing support responds within 24 hours."
+        "effort_estimate": "S",
+        "is_assumption": true,
+        "acceptance_criteria": [
+          "No user is charged during free trial unless they opt-in early.",
+          "Cancelling subscription immediately stops future billing.",
+          "Historical billing errors are refunded upon request."
+        ]
       },
       {
         "id": "FR003",
-        "description": "Reduce ad length to a maximum of 15 seconds and eliminate all ad redirects to external websites during workouts.",
-        "source_finding_ids": ["F003"],
-        "source_review_ids": ["14277925854", "14131519821", "13929492919", "13925669942", "13912139472"],
+        "description": "Reduce ad duration to a maximum of 15 seconds, ensure the dismiss button is visible and functional, and prevent any ad from redirecting to external websites.",
+        "source_finding_ids": [
+          "F003"
+        ],
+        "source_review_ids": [
+          "14277925854",
+          "14131519821",
+          "14033191433",
+          "14013113694",
+          "13976452003",
+          "13929492919",
+          "13925669942",
+          "13912139472"
+        ],
         "priority": "P1",
         "target_version": "v1.1",
         "effort_estimate": "M",
         "is_assumption": false,
-        "acceptance_criteria": "All pre-workout ads are ≤15 seconds; no in-workout redirects occur; free users report significantly improved ad experience."
+        "acceptance_criteria": [
+          "All ads ≤ 15 seconds.",
+          "‘X’ button appears after 5 seconds and is tap-friendly.",
+          "No ad opens external app or website without user double-tap confirmation."
+        ]
       },
       {
         "id": "FR004",
-        "description": "Review and improve workout content quality: ensure consistency between voice guidance and visual demonstrations, reduce repetitive AI-generated routines, and increase variety.",
-        "source_finding_ids": ["F004"],
-        "source_review_ids": ["13903573997", "14069512069"],
+        "description": "Restore a subset of previously free features (e.g., 5 full workouts per week) accessible without subscription, supported by optional short ads.",
+        "source_finding_ids": [
+          "F002"
+        ],
+        "source_review_ids": [
+          "14279948531",
+          "14286721683",
+          "14243194565",
+          "14162328271",
+          "14160080073",
+          "14152184353",
+          "14140886742",
+          "14092968923",
+          "14082318224",
+          "14068643912",
+          "14063791891",
+          "13993531700"
+        ],
         "priority": "P1",
         "target_version": "v1.2",
         "effort_estimate": "L",
         "is_assumption": false,
-        "acceptance_criteria": "At least 90% of new workouts have verified voice-video alignment; user satisfaction with content quality returns to pre-AI levels (measured via in-app survey)."
+        "acceptance_criteria": [
+          "Free tier includes at least 5 full workouts weekly with no paywall.",
+          "Ad-supported option available for free tier.",
+          "Existing saved workouts are accessible without subscription."
+        ]
       },
       {
         "id": "FR005",
-        "description": "Fix account login failures and ensure users can access their paid subscriptions without interruption.",
-        "source_finding_ids": ["F005"],
-        "source_review_ids": ["14291852699", "14246967026", "13906711712", "14000557160"],
+        "description": "Establish a content quality review process to ensure all workouts have accurate voice-diagram synchronization, are vetted for variety, and avoid repetitive AI-generated patterns.",
+        "source_finding_ids": [
+          "F004"
+        ],
+        "source_review_ids": [
+          "14069512069",
+          "13903573997"
+        ],
         "priority": "P1",
         "target_version": "v1.1",
-        "effort_estimate": "S",
-        "is_assumption": false,
-        "acceptance_criteria": "Login success rate exceeds 99%; users with existing subscriptions can access all premium features immediately after login."
+        "effort_estimate": "M",
+        "is_assumption": true,
+        "acceptance_criteria": [
+          "New workouts pass a manual quality check before release.",
+          "Existing AI-generated workouts with inconsistencies are flagged and fixed within 4 weeks.",
+          "User reports of mismatched voice/diagram drop by 90%."
+        ]
       },
       {
         "id": "FR006",
-        "description": "Implement reliable data synchronization across devices and provide a manual backup/restore option for workout progress.",
-        "source_finding_ids": ["F005"],
-        "source_review_ids": ["14291852699", "14246967026", "13906711712", "14000557160"],
+        "description": "Fix authentication issues that prevent paid users from logging in. Ensure support emails are not marked as spam, and provide an account recovery mechanism.",
+        "source_finding_ids": [
+          "F007"
+        ],
+        "source_review_ids": [
+          "14291852699",
+          "14246967026",
+          "14000557160",
+          "13906711712"
+        ],
+        "priority": "P0",
+        "target_version": "v1.1",
+        "effort_estimate": "S",
+        "is_assumption": false,
+        "acceptance_criteria": [
+          "Users can log in with existing credentials without errors.",
+          "Support emails from app domain are delivered to inbox, not spam.",
+          "Account recovery via email works within 5 minutes."
+        ]
+      },
+      {
+        "id": "FR007",
+        "description": "Add Apple Watch integration to track calories burned during workouts and sync with Health app.",
+        "source_finding_ids": [
+          "F006"
+        ],
+        "source_review_ids": [
+          "14097785677",
+          "13900643414"
+        ],
         "priority": "P2",
         "target_version": "v1.2",
         "effort_estimate": "L",
         "is_assumption": false,
-        "acceptance_criteria": "Progress data syncs within 5 seconds of completion; users can export/import data manually; data loss reports drop by 80%."
+        "acceptance_criteria": [
+          "Workout data (calories, heart rate) is displayed on Apple Watch.",
+          "Data syncs to Health app within 30 seconds after workout completion."
+        ]
       },
       {
-        "id": "FR007",
-        "description": "Maintain and enhance core workout quality by preserving effective existing content and introducing new, diverse workouts to keep users motivated.",
-        "source_finding_ids": ["F006"],
-        "source_review_ids": ["14276572019", "14254614594", "14220597773", "14149160522", "14115538096"],
+        "id": "FR008",
+        "description": "Introduce a rep-counting mode as an alternative to timer-based exercises, allowing users to input reps performed.",
+        "source_finding_ids": [
+          "F006"
+        ],
+        "source_review_ids": [
+          "14089758865",
+          "14067629732"
+        ],
         "priority": "P2",
         "target_version": "v1.2",
         "effort_estimate": "M",
         "is_assumption": false,
-        "acceptance_criteria": "Monthly active user rate for existing content stays ≥90%; new workout categories are added quarterly; user satisfaction score for variety remains above 4.5/5."
+        "acceptance_criteria": [
+          "Users can switch between timer and rep mode for any exercise.",
+          "Rep count input is saved in workout history."
+        ]
       }
     ],
     "version_plan": [
       {
         "version": "v1.1",
-        "theme": "Immediate fixes for retention and trust",
-        "release_goal": "Address the most critical user complaints: restore free functionality, fix billing integrity, reduce ad intrusiveness, and resolve login issues to stop churn and rebuild trust.",
-        "requirement_ids": ["FR001", "FR002", "FR003", "FR005"],
-        "rationale": "These requirements have P0/P1 priority with S/M effort estimates, enabling rapid deployment to mitigate the highest-severity problems reported by users."
+        "theme": "Trust and Core Experience Fixes",
+        "release_goal": "Resolve deceptive billing, login issues, ad intrusiveness, and content quality inconsistencies to restore user trust and basic functionality.",
+        "requirement_ids": [
+          "FR001",
+          "FR002",
+          "FR003",
+          "FR005",
+          "FR006"
+        ],
+        "rationale": "These are critical (P0) and high-priority (P1) issues with effort estimates of S/M. They directly address the most urgent user complaints about billing, ads, content quality, and account access."
       },
       {
         "version": "v1.2",
-        "theme": "Quality and sustainability improvements",
-        "release_goal": "Improve content quality, enable data sync across devices, and maintain the core workout experience that users love.",
-        "requirement_ids": ["FR004", "FR006", "FR007"],
-        "rationale": "These requirements address P1/P2 issues with L/M effort, requiring more development time. They target long-term user satisfaction and retention."
+        "theme": "User Retention and Feature Expansion",
+        "release_goal": "Reintroduce free content options (FR004) and add high-demand features (Apple Watch, rep counting) to improve user satisfaction and retention.",
+        "requirement_ids": [
+          "FR004",
+          "FR007",
+          "FR008"
+        ],
+        "rationale": "FR004 is P1 with L effort, FR007 and FR008 are P2 with L and M efforts respectively. These are scheduled after the critical fixes to expand value for both free and paid users."
       }
     ]
   }

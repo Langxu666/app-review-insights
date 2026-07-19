@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef, useEffect, useCallback } from "react";
 import type { PRDDraft, Requirement, VersionPlan, UserStory, Priority } from "@/types";
 
 // ═══════════════════════════════════════════
@@ -165,6 +166,145 @@ function VersionPlanCard({ plan }: { plan: VersionPlan }) {
 }
 
 // ═══════════════════════════════════════════
+// Export
+// ═══════════════════════════════════════════
+
+type ExportFormat = "pdf" | "docx" | "md";
+
+const EXPORT_OPTIONS: { format: ExportFormat; label: string; icon: string; ext: string }[] = [
+  { format: "pdf", label: "导出 PDF", icon: "📄", ext: ".pdf" },
+  { format: "docx", label: "导出 DOCX", icon: "📝", ext: ".docx" },
+  { format: "md", label: "导出 Markdown", icon: "📋", ext: ".md" },
+];
+
+function ExportButton({ prd }: { prd: PRDDraft }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Auto-dismiss status after 3s
+  useEffect(() => {
+    if (status) {
+      const t = setTimeout(() => setStatus(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [status]);
+
+  const handleExport = useCallback(async (format: ExportFormat) => {
+    setIsOpen(false);
+    setExporting(format);
+    setStatus(null);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const response = await fetch(`${backendUrl}/api/export/prd?format=${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(prd),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.detail ?? `Export failed (${response.status})`);
+      }
+
+      // Build filename
+      const appName = (prd.app_name || "export").replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]/g, "_");
+      const date = new Date(prd.generated_at || Date.now())
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, "");
+      const filename = `PRD_${appName}_${date}${EXPORT_OPTIONS.find((o) => o.format === format)!.ext}`;
+
+      // Download blob
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setStatus({ type: "success", message: `${filename} 下载完成` });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "导出失败";
+      setStatus({ type: "error", message });
+    } finally {
+      setExporting(null);
+    }
+  }, [prd]);
+
+  return (
+    <div ref={dropdownRef} className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={!!exporting}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors disabled:opacity-50"
+      >
+        {exporting ? (
+          <>
+            <span className="w-3.5 h-3.5 rounded-full border-2 border-slate-300 border-t-slate-500 animate-spin" />
+            导出中...
+          </>
+        ) : (
+          <>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            导出
+          </>
+        )}
+      </button>
+
+      {/* Status toast */}
+      {status && (
+        <div
+          className={`absolute top-full right-0 mt-2 z-50 px-3 py-2 rounded-lg text-xs font-medium shadow-lg border animate-slide-up whitespace-nowrap ${
+            status.type === "success"
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-red-50 text-red-700 border-red-200"
+          }`}
+        >
+          {status.message}
+        </div>
+      )}
+
+      {/* Dropdown menu */}
+      {isOpen && !exporting && (
+        <div className="absolute top-full right-0 mt-1.5 z-40 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 animate-scale-in origin-top-right">
+          {EXPORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.format}
+              onClick={() => handleExport(opt.format)}
+              className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              <span className="text-base">{opt.icon}</span>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
 // PRDView
 // ═══════════════════════════════════════════
 
@@ -186,19 +326,24 @@ export default function PRDView({ prd }: PRDViewProps) {
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
       <div>
-        <h3 className="text-lg font-bold text-slate-900">产品需求文档 (PRD)</h3>
-        <div className="mt-2 flex items-center gap-3 flex-wrap text-sm">
-          <span className="rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
-            {prd.app_name}
-          </span>
-          <span className="text-xs text-slate-500">
-            分析目标：{prd.analysis_goal}
-          </span>
-          {prd.generated_at && (
-            <span className="text-xs text-slate-400">
-              {new Date(prd.generated_at).toLocaleString("zh-CN")}
-            </span>
-          )}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-bold text-slate-900">产品需求文档 (PRD)</h3>
+            <div className="mt-2 flex items-center gap-3 flex-wrap text-sm">
+              <span className="rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
+                {prd.app_name}
+              </span>
+              <span className="text-xs text-slate-500">
+                分析目标：{prd.analysis_goal}
+              </span>
+              {prd.generated_at && (
+                <span className="text-xs text-slate-400">
+                  {new Date(prd.generated_at).toLocaleString("zh-CN")}
+                </span>
+              )}
+            </div>
+          </div>
+          <ExportButton prd={prd} />
         </div>
       </div>
 
